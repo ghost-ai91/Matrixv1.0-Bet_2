@@ -4,7 +4,7 @@ use anchor_spl::token::{self, Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 // ADICIONADO: Import da estrutura oficial Vault da Meteora
-use meteora_vault_sdk::state::Vault;
+use mercurial_vault::state::Vault;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 

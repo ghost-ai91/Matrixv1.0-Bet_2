@@ -3,12 +3,15 @@ use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_spl::token::{self, Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
+use solana_program::system_program;
+use std::ops::{Div, Mul};
 
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
 declare_id!("4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
 
+/*
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
     name: "Referral Matrix System",
@@ -23,6 +26,132 @@ security_txt! {
     auditors: "",
     acknowledgements: "We thank all security researchers who contributed to the security of our protocol."
 }
+*/
+
+// METEORA-BASED POOL CALCULATIONS
+#[derive(Debug, Clone)]
+pub struct PoolInfo {
+    pub token_a_amount: u64,
+    pub token_b_amount: u64,
+    pub virtual_price: f64,
+    pub virtual_price_raw: u64,
+}
+
+/// Calculate the amount of tokens from LP shares
+/// 
+/// # Arguments
+/// * `amount` - The LP share amount
+/// * `token_amount` - The withdrawable token amount in the vault
+/// * `lp_supply` - The total LP supply of the vault
+/// * `round_up` - Whether to round up the result
+pub fn get_amount_by_share(
+    amount: u64,
+    token_amount: u64,
+    lp_supply: u64,
+    round_up: bool,
+) -> u64 {
+    if lp_supply == 0 {
+        return 0;
+    }
+
+    let numerator = (amount as u128) * (token_amount as u128);
+    let denominator = lp_supply as u128;
+
+    if round_up {
+        // Round up: (numerator + denominator - 1) / denominator
+        ((numerator + denominator - 1) / denominator) as u64
+    } else {
+        (numerator / denominator) as u64
+    }
+}
+
+/// Calculate the LP shares needed for a given token amount
+/// 
+/// # Arguments
+/// * `amount` - The token amount
+/// * `token_amount` - The total token amount in the vault
+/// * `lp_supply` - The total LP supply of the vault
+/// * `round_up` - Whether to round up the result
+pub fn get_share_by_amount(
+    amount: u64,
+    token_amount: u64,
+    lp_supply: u64,
+    round_up: bool,
+) -> u64 {
+    if token_amount == 0 {
+        return 0;
+    }
+
+    let numerator = (amount as u128) * (lp_supply as u128);
+    let denominator = token_amount as u128;
+
+    if round_up {
+        // Round up: (numerator + denominator - 1) / denominator
+        ((numerator + denominator - 1) / denominator) as u64
+    } else {
+        (numerator / denominator) as u64
+    }
+}
+
+/// Calculate pool information including token amounts from vault shares
+/// 
+/// # Arguments
+/// * `current_timestamp` - Current blockchain timestamp
+/// * `pool_vault_a_lp` - Pool's LP token amount in vault A
+/// * `pool_vault_b_lp` - Pool's LP token amount in vault B
+/// * `vault_a_lp_supply` - Total LP supply of vault A
+/// * `vault_b_lp_supply` - Total LP supply of vault B
+/// * `pool_lp_supply` - Total LP supply of the pool
+/// * `vault_a_withdrawable` - Withdrawable amount from vault A
+/// * `vault_b_withdrawable` - Withdrawable amount from vault B
+pub fn calculate_pool_info(
+    current_timestamp: i64,
+    pool_vault_a_lp: u64,
+    pool_vault_b_lp: u64,
+    vault_a_lp_supply: u64,
+    vault_b_lp_supply: u64,
+    pool_lp_supply: u64,
+    vault_a_withdrawable: u64,
+    vault_b_withdrawable: u64,
+) -> PoolInfo {
+    // Calculate actual token amounts from vault LP shares
+    let token_a_amount = get_amount_by_share(
+        pool_vault_a_lp,
+        vault_a_withdrawable,
+        vault_a_lp_supply,
+        false,
+    );
+    
+    let token_b_amount = get_amount_by_share(
+        pool_vault_b_lp,
+        vault_b_withdrawable,
+        vault_b_lp_supply,
+        false,
+    );
+
+    // Calculate virtual price (simplified - would need swap curve for full implementation)
+    let virtual_price_raw = if pool_lp_supply == 0 {
+        0
+    } else {
+        // This is a simplified calculation - in the full implementation,
+        // this would use the swap curve's computeD function
+        let d = token_a_amount + token_b_amount; // Simplified
+        ((1u128 << 64) * (d as u128) / (pool_lp_supply as u128)) as u64
+    };
+
+    let virtual_price = if pool_lp_supply == 0 {
+        0.0
+    } else {
+        (virtual_price_raw as f64) / ((1u64 << 32) as f64)
+    };
+
+    PoolInfo {
+        token_a_amount,
+        token_b_amount,
+        virtual_price,
+        virtual_price_raw,
+    }
+}
 
 // Minimum deposit amount in USD (10 dollars in base units - 8 decimals)
 const MINIMUM_USD_DEPOSIT: u64 = 10_00000000; // 10 USD with 8 decimals (Chainlink format)
@@ -36,32 +165,28 @@ const DEFAULT_SOL_PRICE: i128 = 100_00000000; // $100 with 8 decimals
 // Maximum number of upline accounts that can be processed in a single transaction
 const MAX_UPLINE_DEPTH: usize = 6;
 
-// Number of accounts in the remaining_accounts for vaults and chainlink
-const VAULT_AND_CHAINLINK_ACCOUNTS_COUNT: usize = 8; // 4 Vault A + 2 Chainlink + 2 Vault B
-
-// Number of vault A accounts in remaining_accounts
-const VAULT_A_ACCOUNTS_COUNT: usize = 4; // a_vault_lp, a_vault_lp_mint, a_token_vault, a_vault_state
+// Number of Vault A accounts in the remaining_accounts
+const VAULT_A_ACCOUNTS_COUNT: usize = 3;
 
 // Constants for strict address verification
 pub mod verified_addresses {
     use solana_program::pubkey::Pubkey;
 
-    // Pool and core addresses
-    pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"); // DONUT
-    pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
-    
-    // Vault A addresses (DONUT vault) - From your transaction
+    // Vault A addresses (DONUT token vault)
     pub static A_VAULT_LP: Pubkey = solana_program::pubkey!("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
     pub static A_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
-    pub static A_VAULT_STATE: Pubkey = solana_program::pubkey!("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
-    pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj"); // Added missing constant
+    pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
     
-    // Vault B addresses (WSOL vault) - From your transaction
+    // Meteora pool addresses
+    pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
+    pub static B_VAULT_LP: Pubkey = solana_program::pubkey!("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
     pub static B_VAULT: Pubkey = solana_program::pubkey!("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
     pub static B_TOKEN_VAULT: Pubkey = solana_program::pubkey!("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
-    pub static B_VAULT_LP: Pubkey = solana_program::pubkey!("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
+    
+    // Token addresses
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
+    pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // Chainlink addresses (Devnet)
     pub static CHAINLINK_PROGRAM: Pubkey = solana_program::pubkey!("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
@@ -74,48 +199,6 @@ pub mod admin_addresses {
 
     pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
-}
-
-
-// Meteora Vault structure based on official documentation
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct Vault {
-    /// The flag, if admin set enabled = false, then the user can only withdraw and cannot deposit in the vault
-    pub enabled: u8,
-    /// Vault nonce, to create vault seeds
-    pub bumps: VaultBumps,
-    /// The total liquidity of the vault, including remaining tokens in token_vault and the liquidity in all strategies
-    pub total_amount: u64,
-    /// Token account, hold liquidity in vault reserve
-    pub token_vault: Pubkey,
-    /// Hold lp token of vault
-    pub fee_vault: Pubkey,
-    /// Token mint that vault supports
-    pub token_mint: Pubkey,
-    /// Lp mint of vault
-    pub lp_mint: Pubkey,
-    /// The list of strategy addresses that vault supports
-    pub strategies: Vec<Pubkey>,
-    /// Base vault for calculating performance fees
-    pub base: Pubkey,
-    /// Last report timestamp for yield calculation
-    pub last_report: i64,
-    /// Hourly yield rate (with 18 decimals precision)
-    pub hourly_rate: u64,
-    /// Reserved space for future upgrades
-    pub reserved: [u64; 32],
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct VaultBumps {
-    pub vault_bump: u8,
-    pub token_vault_bump: u8,
-}
-
-impl anchor_lang::AccountDeserialize for Vault {
-    fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
-        Self::deserialize(buf).map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize.into())
-    }
 }
 
 // Program state structure
@@ -196,14 +279,8 @@ pub enum ErrorCode {
     #[msg("Invalid vault A LP mint address")]
     InvalidVaultALpMintAddress,
     
-    #[msg("Invalid vault A state address")]
-    InvalidVaultAStateAddress,
-
-    #[msg("Invalid vault A token vault address")]
+    #[msg("Invalid token A vault address")]
     InvalidTokenAVaultAddress,
-
-    #[msg("Missing vault A accounts")]
-    MissingVaultAAccounts,
 
     #[msg("Referrer account is not registered")]
     ReferrerNotRegistered,
@@ -265,8 +342,8 @@ pub enum ErrorCode {
     #[msg("Token account is not a valid ATA")]
     TokenAccountInvalid,
 
-    #[msg("Missing vault and chainlink accounts")]
-    MissingVaultAndChainlinkAccounts,
+    #[msg("Missing vault A accounts")]
+    MissingVaultAAccounts,
     
     #[msg("Failed to read price feed")]
     PriceFeedReadFailed,
@@ -425,112 +502,51 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
-// Helper function: getAmountByShare equivalent from Meteora SDK
-fn get_amount_by_share(lp_amount: u64, withdrawable_amount: u64, lp_supply: u64) -> Result<u64> {
-    if lp_supply == 0 {
-        return Ok(0);
-    }
-    
-    // Formula from SDK: (lp_amount * withdrawable_amount) / lp_supply
-    let amount = (lp_amount as u128)
-        .checked_mul(withdrawable_amount as u128)
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?
-        .checked_div(lp_supply as u128)
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
-    
-    if amount > u64::MAX as u128 {
-        return Err(error!(ErrorCode::MeteoraCalculationOverflow));
-    }
-    
-    Ok(amount as u64)
-}
-
-// Helper function: calculateWithdrawableAmount equivalent from Meteora SDK
-fn calculate_withdrawable_amount(current_time: i64, vault: &Vault) -> Result<u64> {
-    // This is a simplified version - you might need to implement the full yield calculation
-    // For now, let's use the total_amount as base
-    
-    if vault.enabled == 0 {
-        return Ok(vault.total_amount);
-    }
-    
-    // Calculate time-based yield (simplified implementation)
-    let time_elapsed = current_time.saturating_sub(vault.last_report);
-    
-    if time_elapsed <= 0 || vault.hourly_rate == 0 {
-        return Ok(vault.total_amount);
-    }
-    
-    // Simple yield calculation (you may need to adjust this based on actual Meteora logic)
-    let hours_elapsed = time_elapsed as u64 / 3600;
-    let yield_rate = vault.hourly_rate as f64 / 1_000_000_000_000_000_000.0; // 18 decimals
-    
-    let base_amount = vault.total_amount as f64;
-    let yield_amount = base_amount * yield_rate * hours_elapsed as f64;
-    let total_with_yield = base_amount + yield_amount;
-    
-    if total_with_yield > u64::MAX as f64 {
-        Ok(u64::MAX)
-    } else {
-        Ok(total_with_yield as u64)
-    }
-}
-
-/// CORRECTED FUNCTION: Calculate DONUT tokens using official Meteora methodology
-/// This function replicates the official SDK's calculatePoolInfo approach
+/// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
+/// Simplified approach using token vault balances instead of complex vault structures
 fn get_donut_tokens_amount<'info>(
-    // Pool LP token accounts (how much LP tokens the pool holds from each vault)
-    a_vault_lp: &AccountInfo<'info>,      // Pool's A vault LP tokens
-    b_vault_lp: &AccountInfo<'info>,      // Pool's B vault LP tokens
-    
-    // Vault LP mint accounts (total supply of LP tokens for each vault)
-    a_vault_lp_mint: &AccountInfo<'info>, // A vault LP mint
-    b_vault_lp_mint: &AccountInfo<'info>, // B vault LP mint
-    
-    // Vault state accounts (official Meteora vault structures)
-    a_vault_state: &AccountInfo<'info>,   // A vault state
-    b_vault_state: &AccountInfo<'info>,   // B vault state
-    
-    sol_amount: u64,                      // Amount of SOL to convert
+    a_token_vault: &AccountInfo<'info>,     // Token vault A (DONUT tokens)
+    b_vault_lp: &AccountInfo<'info>,        // LP tokens from vault B held by the pool  
+    a_vault_lp_mint: &AccountInfo<'info>,   // LP token mint for vault A
+    b_vault_lp_mint: &AccountInfo<'info>,   // LP token mint for vault B
+    a_vault_lp: &AccountInfo<'info>,        // LP tokens from vault A held by the pool
+    b_token_vault: &AccountInfo<'info>,     // Token vault B (SOL tokens)
+    sol_amount: u64,                        // Amount of SOL to convert
 ) -> Result<u64> {
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
     
-    // 1. Get current timestamp (required for calculateWithdrawableAmount)
-    let clock = Clock::get()?;
-    let current_time = clock.unix_timestamp;
-    
-    // 2. Read pool's LP token amounts from each vault (EXACTLY like TypeScript SDK)
-    let pool_vault_a_lp: u64;
-    let pool_vault_b_lp: u64;
+    // Read LP token amounts that the pool holds from each vault
+    let pool_vault_a_lp_amount: u64;
+    let pool_vault_b_lp_amount: u64;
     
     {
-        let mut a_vault_lp_data = a_vault_lp.try_borrow_data()?;
+        let a_vault_lp_data = a_vault_lp.try_borrow_data()?;
         let pool_vault_a_lp_token = TokenAccount::try_deserialize_unchecked(&mut a_vault_lp_data.as_ref())
             .map_err(|_| {
                 msg!("Failed to read A vault LP token data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
-        pool_vault_a_lp = pool_vault_a_lp_token.amount;
+        pool_vault_a_lp_amount = pool_vault_a_lp_token.amount;
     }
     
     {
-        let mut b_vault_lp_data = b_vault_lp.try_borrow_data()?;
+        let b_vault_lp_data = b_vault_lp.try_borrow_data()?;
         let pool_vault_b_lp_token = TokenAccount::try_deserialize_unchecked(&mut b_vault_lp_data.as_ref())
             .map_err(|_| {
                 msg!("Failed to read B vault LP token data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
-        pool_vault_b_lp = pool_vault_b_lp_token.amount;
+        pool_vault_b_lp_amount = pool_vault_b_lp_token.amount;
     }
     
-    msg!("Pool LP amounts - A: {}, B: {}", pool_vault_a_lp, pool_vault_b_lp);
+    msg!("Pool LP amounts - A: {}, B: {}", pool_vault_a_lp_amount, pool_vault_b_lp_amount);
     
-    // 3. Read vault LP supplies (EXACTLY like TypeScript SDK)
+    // Read total supply of LP tokens from each vault
     let vault_a_lp_supply: u64;
     let vault_b_lp_supply: u64;
     
     {
-        let mut a_vault_lp_mint_data = a_vault_lp_mint.try_borrow_data()?;
+        let a_vault_lp_mint_data = a_vault_lp_mint.try_borrow_data()?;
         let vault_a_lp_mint_info = Mint::try_deserialize_unchecked(&mut a_vault_lp_mint_data.as_ref())
             .map_err(|_| {
                 msg!("Failed to read A vault LP mint data");
@@ -540,7 +556,7 @@ fn get_donut_tokens_amount<'info>(
     }
     
     {
-        let mut b_vault_lp_mint_data = b_vault_lp_mint.try_borrow_data()?;
+        let b_vault_lp_mint_data = b_vault_lp_mint.try_borrow_data()?;
         let vault_b_lp_mint_info = Mint::try_deserialize_unchecked(&mut b_vault_lp_mint_data.as_ref())
             .map_err(|_| {
                 msg!("Failed to read B vault LP mint data");
@@ -551,96 +567,178 @@ fn get_donut_tokens_amount<'info>(
     
     msg!("Vault LP supplies - A: {}, B: {}", vault_a_lp_supply, vault_b_lp_supply);
     
-    // 4. Read Vault States and calculate withdrawable amounts (LIKE SDK)
-    let vault_a_withdrawable_amount: u64;
-    let vault_b_withdrawable_amount: u64;
+    // Read token vault balances directly (more reliable than vault structures)
+    let vault_a_token_balance: u64;
+    let vault_b_token_balance: u64;
     
     {
-        // Read Vault A state and calculate withdrawable amount
-        let vault_a = Vault::try_deserialize_unchecked(&mut a_vault_state.try_borrow_data()?.as_ref())
+        let a_token_vault_data = a_token_vault.try_borrow_data()?;
+        let vault_a_token_account = TokenAccount::try_deserialize_unchecked(&mut a_token_vault_data.as_ref())
             .map_err(|_| {
-                msg!("Failed to read vault A state");
+                msg!("Failed to read A token vault data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
-        
-        // calculateWithdrawableAmount equivalent
-        vault_a_withdrawable_amount = calculate_withdrawable_amount(current_time, &vault_a)?;
-        msg!("Vault A withdrawable amount: {}", vault_a_withdrawable_amount);
+        vault_a_token_balance = vault_a_token_account.amount;
     }
     
     {
-        // Read Vault B state and calculate withdrawable amount
-        let vault_b = Vault::try_deserialize_unchecked(&mut b_vault_state.try_borrow_data()?.as_ref())
+        let b_token_vault_data = b_token_vault.try_borrow_data()?;
+        let vault_b_token_account = TokenAccount::try_deserialize_unchecked(&mut b_token_vault_data.as_ref())
             .map_err(|_| {
-                msg!("Failed to read vault B state");
+                msg!("Failed to read B token vault data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
-        
-        // calculateWithdrawableAmount equivalent
-        vault_b_withdrawable_amount = calculate_withdrawable_amount(current_time, &vault_b)?;
-        msg!("Vault B withdrawable amount: {}", vault_b_withdrawable_amount);
+        vault_b_token_balance = vault_b_token_account.amount;
     }
     
-    // 5. Calculate actual token amounts using getAmountByShare (EXACTLY like SDK)
-    // const tokenAAmount = getAmountByShare(poolVaultALp, vaultAWithdrawableAmount, vaultALpSupply);
+    msg!("Token vault balances - A: {}, B: {}", vault_a_token_balance, vault_b_token_balance);
+    
+    // Calculate token amounts using vault LP shares and token vault balances
+    // Use get_amount_by_share helper function with rounding for better precision
     let token_a_amount = get_amount_by_share(
-        pool_vault_a_lp,
-        vault_a_withdrawable_amount, 
-        vault_a_lp_supply
-    )?;
+        pool_vault_a_lp_amount,
+        vault_a_token_balance,
+        vault_a_lp_supply,
+        true // round_up for better precision
+    );
     
-    // const tokenBAmount = getAmountByShare(poolVaultBLp, vaultBWithdrawableAmount, vaultBLpSupply);
     let token_b_amount = get_amount_by_share(
-        pool_vault_b_lp,
-        vault_b_withdrawable_amount,
-        vault_b_lp_supply
-    )?;
+        pool_vault_b_lp_amount,
+        vault_b_token_balance,
+        vault_b_lp_supply,
+        true // round_up for better precision
+    );
     
-    msg!("CALCULATED token amounts (like SDK) - A: {}, B: {}", token_a_amount, token_b_amount);
+    msg!("Calculated pool token amounts - A: {}, B: {}", token_a_amount, token_b_amount);
     
-    // 6. Validation: check if there's liquidity in the pool
+    // Validation: check if there's meaningful liquidity
     if token_a_amount == 0 || token_b_amount == 0 {
-        msg!("Pool has zero liquidity - cannot calculate exchange rate");
+        msg!("Pool has zero token amounts - cannot calculate exchange rate");
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
-    // 7. Calculate exchange rate using simple rule of three
-    let sol_amount_u128 = sol_amount as u128;
-    let token_a_amount_u128 = token_a_amount as u128;
-    let token_b_amount_u128 = token_b_amount as u128;
+    // Calculate exchange rate using actual token amounts
+    // This gives us DONUT per SOL based on actual vault liquidity
+    let exchange_ratio = (token_a_amount as f64) / (token_b_amount as f64);
     
-    let donut_tokens_u128 = sol_amount_u128
-        .checked_mul(token_a_amount_u128)
-        .ok_or_else(|| {
-            msg!("Multiplication overflow in exchange rate calculation");
-            error!(ErrorCode::MeteoraCalculationOverflow)
-        })?
-        .checked_div(token_b_amount_u128)
-        .ok_or_else(|| {
-            msg!("Division by zero or overflow in exchange rate calculation");
-            error!(ErrorCode::MeteoraCalculationOverflow)
-        })?;
+    msg!("Exchange ratio (DONUT/SOL) from token vault balances: {:.9}", exchange_ratio);
     
-    if donut_tokens_u128 > u64::MAX as u128 {
-        msg!("Result exceeds u64::MAX");
-        return Err(error!(ErrorCode::MeteoraCalculationOverflow));
-    }
+    // Apply decimal scaling
+    // DONUT has 6 decimals, SOL has 9 decimals
+    let decimal_scaling = 1_000.0; // 10^3 to account for decimal differences (9-6)
     
-    let donut_tokens = donut_tokens_u128 as u64;
+    // Calculate DONUT tokens
+    let donut_tokens_f64 = (sol_amount as f64) * exchange_ratio * decimal_scaling;
     
-    // Log for debugging
-    msg!("Exchange calculation (SDK method):");
-    msg!("  SOL amount: {} lamports", sol_amount);
-    msg!("  Pool SOL (B): {} lamports", token_b_amount);
-    msg!("  Pool DONUT (A): {} lamports", token_a_amount);
-    msg!("  Calculated DONUT tokens: {} lamports", donut_tokens);
+    // Apply safety bounds
+    let donut_tokens = if donut_tokens_f64 < 1.0 && sol_amount > 0 {
+        1 // Minimum 1 token for any valid input
+    } else if donut_tokens_f64 > u64::MAX as f64 {
+        msg!("Calculated amount too large, capping at u64::MAX");
+        u64::MAX
+    } else {
+        donut_tokens_f64 as u64
+    };
     
-    if donut_tokens == 0 && sol_amount > 0 {
-        msg!("Zero result, returning minimum of 1 token");
-        return Ok(1);
-    }
+    // Enhanced logging for debugging
+    msg!("Token vault based exchange calculation:");
+    msg!("  SOL amount: {}", sol_amount);
+    msg!("  Pool A LP: {} -> Token A: {}", pool_vault_a_lp_amount, token_a_amount);
+    msg!("  Pool B LP: {} -> Token B: {}", pool_vault_b_lp_amount, token_b_amount);
+    msg!("  Vault A balance: {}, LP supply: {}", vault_a_token_balance, vault_a_lp_supply);
+    msg!("  Vault B balance: {}, LP supply: {}", vault_b_token_balance, vault_b_lp_supply);
+    msg!("  Exchange ratio: {:.9}", exchange_ratio);
+    msg!("  Decimal scaling: {:.3}", decimal_scaling);
+    msg!("  Calculated DONUT tokens: {}", donut_tokens);
     
     Ok(donut_tokens)
+}
+
+/// Attempt to read vault total_amount from a Meteora vault account
+/// Returns the total_amount field if successful, otherwise returns an error
+fn try_read_vault_total_amount(vault_account: &AccountInfo) -> Result<u64> {
+    let data = vault_account.try_borrow_data()?;
+    
+    // Meteora vault structure (simplified):
+    // - 8 bytes: anchor discriminator
+    // - 1 byte: enabled flag
+    // - vault bumps (varies)
+    // - 8 bytes: total_amount (u64)
+    // We need to find the total_amount field
+    
+    // Check minimum size for vault account
+    if data.len() < 24 {
+        return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+    }
+    
+    // Try to read total_amount at expected offset
+    // The exact offset depends on the vault structure, but total_amount is typically early in the struct
+    // Let's try a few common offsets where total_amount might be located
+    
+    let potential_offsets = [17, 25, 33]; // Common offsets based on vault structure variations
+    
+    for &offset in &potential_offsets {
+        if data.len() >= offset + 8 {
+            let bytes = &data[offset..offset + 8];
+            let total_amount = u64::from_le_bytes(bytes.try_into().map_err(|_| ErrorCode::PriceMeteoraReadFailed)?);
+            
+            // Basic sanity check: total_amount should be reasonable (not zero, not extremely large)
+            if total_amount > 0 && total_amount < u64::MAX / 2 {
+                msg!("Found potential total_amount at offset {}: {}", offset, total_amount);
+                return Ok(total_amount);
+            }
+        }
+    }
+    
+    Err(error!(ErrorCode::PriceMeteoraReadFailed))
+}
+
+/// Calculate pool information using vault total amounts (more accurate than token vault balances)
+/// Based on Meteora vault's get_amount_by_share methodology
+fn calculate_vault_based_pool_info(
+    current_timestamp: u64,
+    pool_vault_a_lp: u64,
+    pool_vault_b_lp: u64,
+    vault_a_lp_supply: u64,
+    vault_b_lp_supply: u64,
+    pool_lp_supply: u64,
+    vault_a_total_amount: u64,
+    vault_b_total_amount: u64,
+) -> PoolInfo {
+    // Calculate token amounts using vault's get_amount_by_share logic
+    // Formula: (lp_shares * total_amount) / lp_supply
+    let token_a_amount = if vault_a_lp_supply > 0 {
+        ((pool_vault_a_lp as u128) * (vault_a_total_amount as u128) / (vault_a_lp_supply as u128)) as u64
+    } else {
+        0
+    };
+    
+    let token_b_amount = if vault_b_lp_supply > 0 {
+        ((pool_vault_b_lp as u128) * (vault_b_total_amount as u128) / (vault_b_lp_supply as u128)) as u64
+    } else {
+        0
+    };
+
+    // Calculate virtual price (simplified implementation)
+    let virtual_price_raw = if pool_lp_supply == 0 {
+        0
+    } else {
+        let d = token_a_amount + token_b_amount;
+        ((1u128 << 64) * (d as u128) / (pool_lp_supply as u128)) as u64
+    };
+
+    let virtual_price = if pool_lp_supply == 0 {
+        0.0
+    } else {
+        (virtual_price_raw as f64) / ((1u64 << 32) as f64)
+    };
+
+    PoolInfo {
+        token_a_amount,
+        token_b_amount,
+        virtual_price,
+        virtual_price_raw,
+    }
 }
 
 // Function to strictly verify an address
@@ -655,13 +753,11 @@ fn verify_address_strict(provided: &Pubkey, expected: &Pubkey, error_code: Error
 fn verify_vault_a_addresses<'info>(
     a_vault_lp: &Pubkey,
     a_vault_lp_mint: &Pubkey,
-    a_token_vault: &Pubkey,
-    a_vault_state: &Pubkey
+    a_token_vault: &Pubkey
 ) -> Result<()> {
     verify_address_strict(a_vault_lp, &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultALpAddress)?;
     verify_address_strict(a_vault_lp_mint, &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultALpMintAddress)?;
     verify_address_strict(a_token_vault, &verified_addresses::A_TOKEN_VAULT, ErrorCode::InvalidTokenAVaultAddress)?;
-    verify_address_strict(a_vault_state, &verified_addresses::A_VAULT_STATE, ErrorCode::InvalidVaultAStateAddress)?;
     
     Ok(())
 }
@@ -1275,19 +1371,17 @@ pub mod referral_system {
         let a_vault_lp = &ctx.remaining_accounts[0];
         let a_vault_lp_mint = &ctx.remaining_accounts[1];
         let a_token_vault = &ctx.remaining_accounts[2];
-        let a_vault_state = &ctx.remaining_accounts[3];
 
         // Verify Vault A addresses
         verify_vault_a_addresses(
             &a_vault_lp.key(),
             &a_vault_lp_mint.key(),
-            &a_token_vault.key(),
-            &a_vault_state.key()
+            &a_token_vault.key()
         )?;
 
         // Extract Chainlink accounts from remaining_accounts
-        let chainlink_feed = &ctx.remaining_accounts[4];
-        let chainlink_program = &ctx.remaining_accounts[5];
+        let chainlink_feed = &ctx.remaining_accounts[3];
+        let chainlink_program = &ctx.remaining_accounts[4];
 
         // STRICT VERIFICATION OF ALL POOL ADDRESSES
         verify_all_fixed_addresses(
@@ -1466,14 +1560,14 @@ pub mod referral_system {
             // Update reserved value for the referrer
             ctx.accounts.referrer.reserved_sol = deposit_amount;
             
-            // Calculate tokens based on pool value - CORRIGIDO COM ORDEM CORRETA
+            // Calculate tokens based on pool value
             let token_amount = get_donut_tokens_amount(
-                a_vault_lp,
+                a_token_vault,
                 &ctx.accounts.b_vault_lp.to_account_info(),
                 a_vault_lp_mint,
                 &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                a_vault_state,
-                &ctx.accounts.b_vault,
+                a_vault_lp,
+                &ctx.accounts.b_token_vault.to_account_info(),
                 deposit_amount
             )?;
             
@@ -1572,10 +1666,10 @@ pub mod referral_system {
             let mut current_deposit = deposit_amount;
             let mut wsol_closed = false;
 
-            // Calculate remaining accounts offset - skip the 4 vault A accounts and 2 Chainlink accounts
+            // Calculate remaining accounts offset - skip the 3 vault A accounts and 2 Chainlink accounts
             let upline_start_idx = VAULT_A_ACCOUNTS_COUNT + 2;
 
-            // Check if we have upline accounts to process (besides the 4 vault A accounts and 2 Chainlink accounts)
+            // Check if we have upline accounts to process (besides the 3 vault A accounts and 2 Chainlink accounts)
             if ctx.remaining_accounts.len() > upline_start_idx && current_deposit > 0 {
                 let upline_accounts = &ctx.remaining_accounts[upline_start_idx..];
                 
@@ -1731,14 +1825,14 @@ pub mod referral_system {
                             // Update the reserved SOL value for the upline
                             upline_account_data.reserved_sol = current_deposit;
                             
-                            // Calculate tokens based on pool value (using vault A accounts) - CORRIGIDO
+                            // Calculate tokens based on pool value (using vault A accounts)
                             let token_amount = get_donut_tokens_amount(
-                                a_vault_lp,
+                                a_token_vault,
                                 &ctx.accounts.b_vault_lp.to_account_info(),
                                 a_vault_lp_mint,
                                 &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                                a_vault_state,
-                                &ctx.accounts.b_vault,
+                                a_vault_lp,
+                                &ctx.accounts.b_token_vault.to_account_info(),
                                 current_deposit
                             )?;
                             

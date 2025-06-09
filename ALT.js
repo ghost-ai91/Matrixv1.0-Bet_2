@@ -147,7 +147,7 @@ async function testAddressLookupTables() {
         "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"
       ), // TOKEN_MINT
       new web3.PublicKey(
-        "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL"
+        "AT3N4n7kf1USFpLYN8tistARK1wCvnN8MCCmKybLBthX"
       ), // STATE_ADDRESS
 
       // Endereços da Pool Meteora

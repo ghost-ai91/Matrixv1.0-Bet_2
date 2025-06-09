@@ -13,7 +13,7 @@ const path = require("path")
 
 // Receber parâmetros da linha de comando
 const args = process.argv.slice(2)
-const walletPath = args[0] || "./carteiras/carteira1.json" // Caminho padrão se não for fornecido
+const walletPath = args[0] || "/root/.config/solana/id.json" // Caminho padrão se não for fornecido
 const configOutputPath = args[1] || "./matriz-config.json"
 
 // Carregue seu IDL compilado

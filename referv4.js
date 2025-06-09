@@ -265,6 +265,7 @@ async function main() {
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
     // Vault A addresses (DONUT) - UPDATED with corrected addresses from the library
+    const A_VAULT = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN"); // ← ADICIONADO
     const A_VAULT_LP = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
     const A_VAULT_LP_MINT = new PublicKey("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
     const A_TOKEN_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
@@ -577,6 +578,7 @@ async function main() {
           userWsolAccount: userWsolAccount,
           wsolMint: WSOL_MINT,
           pool: POOL_ADDRESS,
+          aVault: A_VAULT, // ← ADICIONADO: Esta era a linha que faltava!
           bVault: B_VAULT,
           bTokenVault: B_TOKEN_VAULT,
           bVaultLpMint: B_VAULT_LP_MINT,

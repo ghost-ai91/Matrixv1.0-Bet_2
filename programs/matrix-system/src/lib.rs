@@ -592,18 +592,20 @@ fn get_donut_tokens_amount<'info>(
     msg!("Token vault balances - A: {}, B: {}", vault_a_token_balance, vault_b_token_balance);
     
     // Calculate token amounts using vault LP shares and token vault balances
-    // Formula: (pool_lp_amount * vault_token_balance) / vault_lp_supply
-    let token_a_amount = if vault_a_lp_supply > 0 {
-        ((pool_vault_a_lp_amount as u128) * (vault_a_token_balance as u128) / (vault_a_lp_supply as u128)) as u64
-    } else {
-        0
-    };
+    // Use get_amount_by_share helper function with rounding for better precision
+    let token_a_amount = get_amount_by_share(
+        pool_vault_a_lp_amount,
+        vault_a_token_balance,
+        vault_a_lp_supply,
+        true // round_up for better precision
+    );
     
-    let token_b_amount = if vault_b_lp_supply > 0 {
-        ((pool_vault_b_lp_amount as u128) * (vault_b_token_balance as u128) / (vault_b_lp_supply as u128)) as u64
-    } else {
-        0
-    };
+    let token_b_amount = get_amount_by_share(
+        pool_vault_b_lp_amount,
+        vault_b_token_balance,
+        vault_b_lp_supply,
+        true // round_up for better precision
+    );
     
     msg!("Calculated pool token amounts - A: {}, B: {}", token_a_amount, token_b_amount);
     
@@ -621,7 +623,7 @@ fn get_donut_tokens_amount<'info>(
     
     // Apply decimal scaling
     // DONUT has 6 decimals, SOL has 9 decimals
-    let decimal_scaling = 1_000.0; // 10^3 to account for decimal differences (9-6)
+    let decimal_scaling = 1_000_000_000; // 10^9 to account for decimal differences (9-6)
     
     // Calculate DONUT tokens
     let donut_tokens_f64 = (sol_amount as f64) * exchange_ratio * decimal_scaling;

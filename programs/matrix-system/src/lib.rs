@@ -1,9 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{self, Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
-use solana_program::program_pack::Pack;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
@@ -93,6 +92,13 @@ pub struct MeteoraVault {
 pub struct VaultBumps {
     pub vault_bump: u8,
     pub token_vault_bump: u8,
+}
+
+// ← ADICIONAR AQUI ↓
+impl anchor_lang::AccountDeserialize for MeteoraVault {
+    fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
+        Self::deserialize(buf).map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize.into())
+    }
 }
 
 // Program state structure
@@ -459,7 +465,7 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
-// FUNÇÃO CORRIGIDA (substitua a sua função get_donut_tokens_amount por esta):
+// FUNÇÃO CORRIGIDA - Substitua a função get_donut_tokens_amount por esta:
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
 /// FIXED VERSION for Dynamic Vaults with yield/lending on mainnet
 /// Uses manual implementation of get_amount_by_share() method
@@ -518,7 +524,7 @@ fn get_donut_tokens_amount<'info>(
     let b_vault_lp_supply: u64;
     
     {
-        // Deserialize LP mint accounts using Anchor's Mint
+        // Deserialize LP mint accounts using Anchor's Mint - CORRIGIDO
         let mut a_vault_lp_mint_data = a_vault_lp_mint.try_borrow_data()?;
         let mut b_vault_lp_mint_data = b_vault_lp_mint.try_borrow_data()?;
         
@@ -541,19 +547,19 @@ fn get_donut_tokens_amount<'info>(
     
     force_memory_cleanup();
     
-    // 4. Read Vault structs and calculate real token amounts using get_amount_by_share
+    // 4. Read Vault structs and calculate real token amounts using get_amount_by_share - CORRIGIDO
     let total_token_a_amount: u64;
     let total_token_b_amount: u64;
     
     {
-        // Get vault A struct
+        // Get vault A struct - CORRIGIDO
         let vault_a = MeteoraVault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault A data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
 
-        // Get vault B struct  
+        // Get vault B struct - CORRIGIDO
         let vault_b = MeteoraVault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault B data");

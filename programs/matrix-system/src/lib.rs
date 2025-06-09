@@ -39,6 +39,9 @@ const MAX_UPLINE_DEPTH: usize = 6;
 // Number of accounts in the remaining_accounts for vaults and chainlink
 const VAULT_AND_CHAINLINK_ACCOUNTS_COUNT: usize = 7; // 2 Chainlink + 5 Vault accounts
 
+// Number of vault A accounts in remaining_accounts
+const VAULT_A_ACCOUNTS_COUNT: usize = 3; // a_vault_lp, a_vault_lp_mint, a_token_vault
+
 // Constants for strict address verification
 pub mod verified_addresses {
     use solana_program::pubkey::Pubkey;
@@ -52,6 +55,7 @@ pub mod verified_addresses {
     pub static A_VAULT_LP: Pubkey = solana_program::pubkey!("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
     pub static A_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
     pub static A_VAULT_STATE: Pubkey = solana_program::pubkey!("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
+    pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz"); // Added missing constant
     
     // Vault B addresses (WSOL vault) - From your transaction
     pub static B_VAULT: Pubkey = solana_program::pubkey!("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
@@ -193,6 +197,12 @@ pub enum ErrorCode {
     
     #[msg("Invalid vault A state address")]
     InvalidVaultAStateAddress,
+
+    #[msg("Invalid vault A token vault address")]
+    InvalidTokenAVaultAddress,
+
+    #[msg("Missing vault A accounts")]
+    MissingVaultAAccounts,
 
     #[msg("Referrer account is not registered")]
     ReferrerNotRegistered,

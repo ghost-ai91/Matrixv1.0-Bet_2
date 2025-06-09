@@ -6,7 +6,7 @@ use chainlink_solana as chainlink;
 use solana_program::program_pack::Pack;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
-use mercurial_vault;
+
 
 
 declare_id!("4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
@@ -376,9 +376,10 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
+
+
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
 /// FIXED VERSION: Now handles dynamic vaults correctly on mainnet
-
 fn get_donut_tokens_amount<'info>(
     a_vault_lp: &AccountInfo<'info>,
     b_vault_lp: &AccountInfo<'info>,
@@ -388,136 +389,51 @@ fn get_donut_tokens_amount<'info>(
     b_token_vault: &AccountInfo<'info>,
     sol_amount: u64,
 ) -> Result<u64> {
-    const PRECISION_FACTOR: i128 = 1_000_000_000;
-    
-    msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
-    
-    // 1. Read LP token values
+    // Ler dados do pool
     let (a_vault_lp_amount, b_vault_lp_amount) = {
-        let a_data = spl_token::state::Account::unpack(&a_vault_lp.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        let b_data = spl_token::state::Account::unpack(&b_vault_lp.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        
-        msg!("LP amounts - A: {}, B: {}", a_data.amount, b_data.amount);
+        let a_data = spl_token::state::Account::unpack(&a_vault_lp.try_borrow_data()?)?;
+        let b_data = spl_token::state::Account::unpack(&b_vault_lp.try_borrow_data()?)?;
         (a_data.amount, b_data.amount)
     };
     
-    force_memory_cleanup();
-    
-    // 2. Read LP token supplies
     let (a_vault_lp_supply, b_vault_lp_supply) = {
-        let a_mint = spl_token::state::Mint::unpack(&a_vault_lp_mint.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        let b_mint = spl_token::state::Mint::unpack(&b_vault_lp_mint.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        
-        msg!("LP supplies - A: {}, B: {}", a_mint.supply, b_mint.supply);
+        let a_mint = spl_token::state::Mint::unpack(&a_vault_lp_mint.try_borrow_data()?)?;
+        let b_mint = spl_token::state::Mint::unpack(&b_vault_lp_mint.try_borrow_data()?)?;
         (a_mint.supply, b_mint.supply)
     };
     
-    force_memory_cleanup();
+    // DONUT no pool (vault A)
+    let donut_amount_in_pool = {
+        let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)?;
+        (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128
+    } as u64;
     
-    // 3. Read token A amount
-    let total_token_a_amount = {
-        let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        msg!("Total token A amount: {}", a_vault_data.amount);
-        a_vault_data.amount
+    // SOL no pool (vault B) - USANDO get_amount_by_share
+    let sol_amount_in_pool = {
+        let clock = Clock::get()?;
+        let buffer_data = spl_token::state::Account::unpack(&b_token_vault.try_borrow_data()?)?;
+        
+        // Estimar vault total
+        let utilization = b_vault_lp_amount as f64 / b_vault_lp_supply as f64;
+        let estimated_vault_total = (buffer_data.amount as f64 * if utilization > 0.5 { 10.0 } else { 8.0 }) as u64;
+        
+        // 🎯 USAR get_amount_by_share aqui
+        get_amount_by_share(
+            clock.unix_timestamp,
+            b_vault_lp_amount,
+            b_vault_lp_supply,
+            estimated_vault_total
+        )?
     };
     
-    // 4. VALOR PRECISO DO VAULT B VIA METEORA
-    let precise_vault_b_amount = {
-        // Derivar vault address Meteora
-        let wsol_mint = solana_program::pubkey!("So11111111111111111111111111111111111111112");
-        let vault_program = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-        
-        let (vault_address, _) = Pubkey::find_program_address(
-            &[
-                b"vault".as_ref(),
-                wsol_mint.as_ref(),
-                mercurial_vault::get_base_key().as_ref(),
-            ],
-            &vault_program,
-        );
-        
-        msg!("Meteora vault address: {}", vault_address);
-        
-        // Obter buffer amount
-        let buffer_data = spl_token::state::Account::unpack(&b_token_vault.try_borrow_data()?)
-            .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
-        
-        // Calcular utilização do vault
-        let utilization_ratio = if b_vault_lp_supply > 0 {
-            b_vault_lp_amount as f64 / b_vault_lp_supply as f64
-        } else {
-            0.0
-        };
-        
-        // MÁXIMA PRECISÃO: Multiplicador baseado em dados reais Meteora
-        let precision_multiplier = if utilization_ratio > 0.85 {
-            11.8  // Alta utilização - mais lending ativo
-        } else if utilization_ratio > 0.6 {
-            10.9  // Utilização média
-        } else if utilization_ratio > 0.3 {
-            9.7   // Utilização baixa
-        } else {
-            8.5   // Utilização mínima
-        };
-        
-        let precise_value = (buffer_data.amount as f64 * precision_multiplier) as u64;
-        
-        msg!("Buffer: {}, Utilization: {:.3}, Multiplier: {:.1}", 
-             buffer_data.amount, utilization_ratio, precision_multiplier);
-        msg!("PRECISE vault B value: {}", precise_value);
-        
-        precise_value
-    };
-    
-    force_memory_cleanup();
-    
-    // 5. Verificar valores zero
-    if a_vault_lp_supply == 0 || b_vault_lp_supply == 0 || 
-       total_token_a_amount == 0 || precise_vault_b_amount == 0 {
-        return Err(error!(ErrorCode::PriceMeteoraReadFailed));
-    }
-    
-    // 6. Calcular pool tokens
-    let pool_token_a = (total_token_a_amount as i128)
-        .checked_mul(a_vault_lp_amount as i128)
-        .and_then(|n| n.checked_div(a_vault_lp_supply as i128))
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
-    
-    let pool_token_b = (precise_vault_b_amount as i128)
-        .checked_mul(b_vault_lp_amount as i128)
-        .and_then(|n| n.checked_div(b_vault_lp_supply as i128))
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
-    
-    msg!("Pool tokens - A: {}, B: {} (MÁXIMA PRECISÃO)", pool_token_a, pool_token_b);
-    
-    if pool_token_a == 0 || pool_token_b == 0 {
+    // Regra de 3: quantos DONUT para este SOL
+    if sol_amount_in_pool == 0 {
         return Err(error!(ErrorCode::MeteoraCalculationOverflow));
     }
     
-    // 7. Calcular resultado final
-    let basic_ratio = pool_token_a
-        .checked_mul(PRECISION_FACTOR)
-        .and_then(|n| n.checked_div(pool_token_b))
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+    let donut_tokens_to_mint = (sol_amount as u128 * donut_amount_in_pool as u128) / sol_amount_in_pool as u128;
     
-    let donut_tokens = (sol_amount as i128)
-        .checked_mul(basic_ratio)
-        .and_then(|n| n.checked_div(PRECISION_FACTOR))
-        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
-    
-    if donut_tokens > i128::from(u64::MAX) {
-        return Err(error!(ErrorCode::MeteoraCalculationOverflow));
-    }
-    
-    let result = donut_tokens as u64;
-    msg!("Final donut_tokens: {}", result);
-    
-    Ok(if result == 0 { 1 } else { result })
+    Ok(donut_tokens_to_mint as u64)
 }
 
 // Function to strictly verify an address
@@ -735,6 +651,25 @@ fn process_pay_referrer<'info>(
     ).map_err(|_| error!(ErrorCode::ReferrerPaymentFailed))?;
     
     Ok(())
+}
+
+//get_amount_by_share
+pub fn get_amount_by_share(
+    current_timestamp: i64,
+    lp_token_amount: u64,
+    lp_total_supply: u64,
+    vault_total_amount: u64,
+) -> Result<u64> {
+    if lp_total_supply == 0 {
+        return Ok(0);
+    }
+    
+    let token_amount = (lp_token_amount as u128)
+        .checked_mul(vault_total_amount as u128)
+        .and_then(|n| n.checked_div(lp_total_supply as u128))
+        .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+    
+    Ok(token_amount as u64)
 }
 
 // Function to mint tokens for the program vault

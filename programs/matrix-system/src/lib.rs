@@ -73,29 +73,23 @@ pub mod admin_addresses {
 
 }
 
+// Pool state da Meteora Dynamic AMM
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct MeteoraVault {
+pub struct MeteoraPool {
     pub enabled: bool,
-    pub bumps: VaultBumps,
-    pub total_amount: u64,
-    pub token_vault: Pubkey,
     pub lp_mint: Pubkey,
-    pub strategy: Pubkey,
-    pub reserve: u64,
-    pub performance_fee_rate: u64,
-    pub hourly_rate: u128,
-    pub last_report: i64,
-    pub lock_duration: i64,
+    pub a_vault: Pubkey,        // Endereço da struct Vault A
+    pub b_vault: Pubkey,        // Endereço da struct Vault B  
+    pub a_vault_lp: Pubkey,     // LP token account A
+    pub b_vault_lp: Pubkey,     // LP token account B
+    pub a_vault_lp_mint: Pubkey, // LP mint A
+    pub b_vault_lp_mint: Pubkey, // LP mint B
+    pub protocol_fee_rate: u64,
+    pub trade_fee_rate: u64,
+    pub padding: [u64; 32],     // Padding para compatibilidade
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct VaultBumps {
-    pub vault_bump: u8,
-    pub token_vault_bump: u8,
-}
-
-// ← ADICIONAR AQUI ↓
-impl anchor_lang::AccountDeserialize for MeteoraVault {
+impl anchor_lang::AccountDeserialize for MeteoraPool {
     fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
         Self::deserialize(buf).map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize.into())
     }
@@ -466,24 +460,31 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
 }
 
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
-/// VERSÃO VIRTUAL PRICE - Replica o que o TypeScript SDK faz
-/// Usa LP amounts e supplies para calcular proporções (como poolInfo.tokenAAmount/tokenBAmount)
+/// VERSÃO CORRIGIDA - Usa método oficial da Meteora com get_amount_by_share
+/// Mantém mesma assinatura, apenas implementação interna corrigida
 fn get_donut_tokens_amount<'info>(
-    a_vault_lp: &AccountInfo<'info>,
-    b_vault_lp: &AccountInfo<'info>,
-    a_vault_lp_mint: &AccountInfo<'info>,
-    b_vault_lp_mint: &AccountInfo<'info>,
-    a_token_vault: &AccountInfo<'info>,  // Para logs apenas
-    b_token_vault: &AccountInfo<'info>,  // Para logs apenas
+    a_vault_lp: &AccountInfo<'info>,      // Mantém mesmos parâmetros
+    b_vault_lp: &AccountInfo<'info>,      // Mantém mesmos parâmetros
+    a_vault_lp_mint: &AccountInfo<'info>, // Mantém mesmos parâmetros
+    b_vault_lp_mint: &AccountInfo<'info>, // Mantém mesmos parâmetros
+    a_token_vault: &AccountInfo<'info>,   // Agora será struct Vault A
+    b_token_vault: &AccountInfo<'info>,   // Agora será struct Vault B
     sol_amount: u64,
 ) -> Result<u64> {
     // Constants for calculations
-    const PRECISION_FACTOR: i128 = 1_000_000_000; // For precision in divisions
+    const PRECISION_FACTOR: i128 = 1_000_000_000;
     
     // Log the input parameter
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
     
-    // 1. Read LP token amounts (representa a liquidez efetiva do pool)
+    // 1. Get current timestamp (necessário para get_amount_by_share)
+    let clock = Clock::get()?;
+    let current_time: u64 = clock.unix_timestamp.try_into().map_err(|_| {
+        msg!("Failed to convert timestamp");
+        error!(ErrorCode::PriceMeteoraReadFailed)
+    })?;
+    
+    // 2. Read LP token amounts
     let a_vault_lp_amount: u64;
     let b_vault_lp_amount: u64;
     
@@ -510,7 +511,7 @@ fn get_donut_tokens_amount<'info>(
     
     force_memory_cleanup();
     
-    // 2. Read LP token supplies
+    // 3. Read LP token supplies
     let a_vault_lp_supply: u64;
     let b_vault_lp_supply: u64;
     
@@ -537,27 +538,59 @@ fn get_donut_tokens_amount<'info>(
     
     force_memory_cleanup();
     
-    // 3. MÉTODO VIRTUAL PRICE: Usar LP amounts como proxy para token amounts
-    // O TypeScript SDK funciona assim - poolInfo.tokenAAmount/tokenBAmount já consideram yields
-    // Os LP amounts representam a liquidez efetiva no pool (com yields incluídos)
+    // 4. Read Vault structs e calcular valores REAIS (MÉTODO OFICIAL DA METEORA)
+    let token_a_amount: u64;
+    let token_b_amount: u64;
     
-    let effective_token_a_amount = a_vault_lp_amount;
-    let effective_token_b_amount = b_vault_lp_amount;
+    {
+        // Lê as structs Vault A e B (não token accounts)
+        let vault_a = MeteoraVault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
+            .map_err(|_| {
+                msg!("Failed to read vault A data");
+                error!(ErrorCode::PriceMeteoraReadFailed)
+            })?;
+
+        let vault_b = MeteoraVault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
+            .map_err(|_| {
+                msg!("Failed to read vault B data");
+                error!(ErrorCode::PriceMeteoraReadFailed)
+            })?;
+
+        // EXATAMENTE como no código oficial da Meteora:
+        token_a_amount = vault_a.get_amount_by_share(
+            current_time,
+            a_vault_lp_amount,
+            a_vault_lp_supply,
+        ).map_err(|_| {
+            msg!("Failed to get token A amount");
+            error!(ErrorCode::PriceMeteoraReadFailed)
+        })?;
+
+        token_b_amount = vault_b.get_amount_by_share(
+            current_time,
+            b_vault_lp_amount,
+            b_vault_lp_supply,
+        ).map_err(|_| {
+            msg!("Failed to get token B amount");
+            error!(ErrorCode::PriceMeteoraReadFailed)
+        })?;
+
+        msg!("REAL token amounts (with yields) - A: {}, B: {}", token_a_amount, token_b_amount);
+    }
     
-    msg!("Effective token amounts (LP-based) - A: {}, B: {}", effective_token_a_amount, effective_token_b_amount);
+    force_memory_cleanup();
     
-    // 4. Check for zero values
-    if effective_token_a_amount == 0 || effective_token_b_amount == 0 {
+    // 5. Check for zero values
+    if token_a_amount == 0 || token_b_amount == 0 {
         msg!("Pool has zero values - cannot calculate exchange rate");
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
-    // 5. Convert to i128 for safe calculations
-    let token_a_big = effective_token_a_amount as i128;
-    let token_b_big = effective_token_b_amount as i128;
+    // 6. Calculate exchange ratio usando valores REAIS
+    let token_a_big = token_a_amount as i128;
+    let token_b_big = token_b_amount as i128;
     let sol_amount_big = sol_amount as i128;
     
-    // 6. Calculate the exchange ratio diretamente (como poolInfo.tokenAAmount / poolInfo.tokenBAmount)
     let basic_ratio = match token_a_big.checked_mul(PRECISION_FACTOR) {
         Some(num) => match num.checked_div(token_b_big) {
             Some(result) => result,
@@ -572,9 +605,9 @@ fn get_donut_tokens_amount<'info>(
         }
     };
     
-    msg!("Exchange ratio (LP-based): {}", basic_ratio);
+    msg!("Exchange ratio (with yields): {}", basic_ratio);
     
-    // 7. Calculate donut tokens: sol_amount * (token_a / token_b)
+    // 7. Calculate donut tokens
     let donut_tokens_scaled = match sol_amount_big.checked_mul(basic_ratio) {
         Some(result) => result,
         None => {
@@ -604,7 +637,6 @@ fn get_donut_tokens_amount<'info>(
 
     // 10. Convert to u64
     let donut_tokens = donut_tokens_big as u64;
-
     msg!("Final donut_tokens (u64): {}", donut_tokens);
     
     // 11. Handle zero result

@@ -501,14 +501,14 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
 }
 
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
-/// Updated to match actual Meteora vault implementation with locked profit consideration
+/// Simplified approach using token vault balances instead of complex vault structures
 fn get_donut_tokens_amount<'info>(
-    a_token_vault: &AccountInfo<'info>,     // Vault A account - try to read as Meteora Vault if possible
+    a_token_vault: &AccountInfo<'info>,     // Token vault A (DONUT tokens)
     b_vault_lp: &AccountInfo<'info>,        // LP tokens from vault B held by the pool  
     a_vault_lp_mint: &AccountInfo<'info>,   // LP token mint for vault A
     b_vault_lp_mint: &AccountInfo<'info>,   // LP token mint for vault B
     a_vault_lp: &AccountInfo<'info>,        // LP tokens from vault A held by the pool
-    b_token_vault: &AccountInfo<'info>,     // Vault B account - try to read as Meteora Vault if possible
+    b_token_vault: &AccountInfo<'info>,     // Token vault B (SOL tokens)
     sol_amount: u64,                        // Amount of SOL to convert
 ) -> Result<u64> {
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
@@ -565,88 +565,63 @@ fn get_donut_tokens_amount<'info>(
     
     msg!("Vault LP supplies - A: {}, B: {}", vault_a_lp_supply, vault_b_lp_supply);
     
-    // Try to read actual vault total_amount (more accurate than token vault balance)
-    // If we can't read the vault structure, fall back to token vault balance
-    let vault_a_total_amount: u64;
-    let vault_b_total_amount: u64;
+    // Read token vault balances directly (more reliable than vault structures)
+    let vault_a_token_balance: u64;
+    let vault_b_token_balance: u64;
     
-    // Attempt to read vault A total_amount from vault structure
-    vault_a_total_amount = match try_read_vault_total_amount(a_token_vault) {
-        Ok(amount) => {
-            msg!("Successfully read vault A total_amount: {}", amount);
-            amount
-        },
-        Err(_) => {
-            msg!("Could not read vault A structure, falling back to token vault balance");
-            // Fallback: read token vault account balance
-            let a_token_vault_data = a_token_vault.try_borrow_data()?;
-            let vault_a_token_account = TokenAccount::try_deserialize_unchecked(&mut a_token_vault_data.as_ref())
-                .map_err(|_| {
-                    msg!("Failed to read A token vault data");
-                    error!(ErrorCode::PriceMeteoraReadFailed)
-                })?;
-            vault_a_token_account.amount
-        }
+    {
+        let a_token_vault_data = a_token_vault.try_borrow_data()?;
+        let vault_a_token_account = TokenAccount::try_deserialize_unchecked(&mut a_token_vault_data.as_ref())
+            .map_err(|_| {
+                msg!("Failed to read A token vault data");
+                error!(ErrorCode::PriceMeteoraReadFailed)
+            })?;
+        vault_a_token_balance = vault_a_token_account.amount;
+    }
+    
+    {
+        let b_token_vault_data = b_token_vault.try_borrow_data()?;
+        let vault_b_token_account = TokenAccount::try_deserialize_unchecked(&mut b_token_vault_data.as_ref())
+            .map_err(|_| {
+                msg!("Failed to read B token vault data");
+                error!(ErrorCode::PriceMeteoraReadFailed)
+            })?;
+        vault_b_token_balance = vault_b_token_account.amount;
+    }
+    
+    msg!("Token vault balances - A: {}, B: {}", vault_a_token_balance, vault_b_token_balance);
+    
+    // Calculate token amounts using vault LP shares and token vault balances
+    // Formula: (pool_lp_amount * vault_token_balance) / vault_lp_supply
+    let token_a_amount = if vault_a_lp_supply > 0 {
+        ((pool_vault_a_lp_amount as u128) * (vault_a_token_balance as u128) / (vault_a_lp_supply as u128)) as u64
+    } else {
+        0
     };
     
-    // Attempt to read vault B total_amount from vault structure  
-    vault_b_total_amount = match try_read_vault_total_amount(b_token_vault) {
-        Ok(amount) => {
-            msg!("Successfully read vault B total_amount: {}", amount);
-            amount
-        },
-        Err(_) => {
-            msg!("Could not read vault B structure, falling back to token vault balance");
-            // Fallback: read token vault account balance
-            let b_token_vault_data = b_token_vault.try_borrow_data()?;
-            let vault_b_token_account = TokenAccount::try_deserialize_unchecked(&mut b_token_vault_data.as_ref())
-                .map_err(|_| {
-                    msg!("Failed to read B token vault data");
-                    error!(ErrorCode::PriceMeteoraReadFailed)
-                })?;
-            vault_b_token_account.amount
-        }
+    let token_b_amount = if vault_b_lp_supply > 0 {
+        ((pool_vault_b_lp_amount as u128) * (vault_b_token_balance as u128) / (vault_b_lp_supply as u128)) as u64
+    } else {
+        0
     };
     
-    msg!("Vault total amounts - A: {}, B: {}", vault_a_total_amount, vault_b_total_amount);
-    
-    // Get current timestamp for locked profit calculations
-    let clock = Clock::get()?;
-    let current_timestamp = clock.unix_timestamp as u64;
-    
-    // Calculate pool LP supply (simplified approach)
-    let pool_lp_supply = pool_vault_a_lp_amount + pool_vault_b_lp_amount;
-    
-    // Use Meteora-style calculations with actual vault total amounts
-    let pool_info = calculate_vault_based_pool_info(
-        current_timestamp,
-        pool_vault_a_lp_amount,
-        pool_vault_b_lp_amount,
-        vault_a_lp_supply,
-        vault_b_lp_supply,
-        pool_lp_supply,
-        vault_a_total_amount,  // Use total_amount instead of withdrawable
-        vault_b_total_amount,  // Use total_amount instead of withdrawable
-    );
-    
-    msg!("Pool info - Token A: {}, Token B: {}, Virtual Price: {}", 
-         pool_info.token_a_amount, pool_info.token_b_amount, pool_info.virtual_price);
+    msg!("Calculated pool token amounts - A: {}, B: {}", token_a_amount, token_b_amount);
     
     // Validation: check if there's meaningful liquidity
-    if pool_info.token_a_amount == 0 || pool_info.token_b_amount == 0 {
+    if token_a_amount == 0 || token_b_amount == 0 {
         msg!("Pool has zero token amounts - cannot calculate exchange rate");
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
-    // Calculate exchange rate using actual token amounts from vault calculations
+    // Calculate exchange rate using actual token amounts
     // This gives us DONUT per SOL based on actual vault liquidity
-    let exchange_ratio = (pool_info.token_a_amount as f64) / (pool_info.token_b_amount as f64);
+    let exchange_ratio = (token_a_amount as f64) / (token_b_amount as f64);
     
-    msg!("Exchange ratio (DONUT/SOL) from vault-based calculations: {:.9}", exchange_ratio);
+    msg!("Exchange ratio (DONUT/SOL) from token vault balances: {:.9}", exchange_ratio);
     
     // Apply decimal scaling
-    // Assuming DONUT has 6 decimals and SOL has 9 decimals
-    let decimal_scaling = 1_000.0; // 10^3 to account for decimal differences
+    // DONUT has 6 decimals, SOL has 9 decimals
+    let decimal_scaling = 1_000.0; // 10^3 to account for decimal differences (9-6)
     
     // Calculate DONUT tokens
     let donut_tokens_f64 = (sol_amount as f64) * exchange_ratio * decimal_scaling;
@@ -662,14 +637,14 @@ fn get_donut_tokens_amount<'info>(
     };
     
     // Enhanced logging for debugging
-    msg!("Vault-based exchange calculation:");
+    msg!("Token vault based exchange calculation:");
     msg!("  SOL amount: {}", sol_amount);
-    msg!("  Pool A LP: {} -> Token A: {}", pool_vault_a_lp_amount, pool_info.token_a_amount);
-    msg!("  Pool B LP: {} -> Token B: {}", pool_vault_b_lp_amount, pool_info.token_b_amount);
-    msg!("  Vault A total: {}, LP supply: {}", vault_a_total_amount, vault_a_lp_supply);
-    msg!("  Vault B total: {}, LP supply: {}", vault_b_total_amount, vault_b_lp_supply);
+    msg!("  Pool A LP: {} -> Token A: {}", pool_vault_a_lp_amount, token_a_amount);
+    msg!("  Pool B LP: {} -> Token B: {}", pool_vault_b_lp_amount, token_b_amount);
+    msg!("  Vault A balance: {}, LP supply: {}", vault_a_token_balance, vault_a_lp_supply);
+    msg!("  Vault B balance: {}, LP supply: {}", vault_b_token_balance, vault_b_lp_supply);
     msg!("  Exchange ratio: {:.9}", exchange_ratio);
-    msg!("  Virtual price: {:.9}", pool_info.virtual_price);
+    msg!("  Decimal scaling: {:.3}", decimal_scaling);
     msg!("  Calculated DONUT tokens: {}", donut_tokens);
     
     Ok(donut_tokens)

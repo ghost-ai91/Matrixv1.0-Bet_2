@@ -380,6 +380,7 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
 
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
 /// FIXED VERSION: Now handles dynamic vaults correctly on mainnet
+// 2. FUNÇÃO get_donut_tokens_amount (com logs detalhados)
 fn get_donut_tokens_amount<'info>(
     a_vault_lp: &AccountInfo<'info>,
     b_vault_lp: &AccountInfo<'info>,
@@ -389,49 +390,90 @@ fn get_donut_tokens_amount<'info>(
     b_token_vault: &AccountInfo<'info>,
     sol_amount: u64,
 ) -> Result<u64> {
-    // Ler dados do pool
+    msg!("🚀 get_donut_tokens_amount - sol_amount: {}", sol_amount);
+    
+    // 1. Ler LP amounts
     let (a_vault_lp_amount, b_vault_lp_amount) = {
         let a_data = spl_token::state::Account::unpack(&a_vault_lp.try_borrow_data()?)?;
         let b_data = spl_token::state::Account::unpack(&b_vault_lp.try_borrow_data()?)?;
+        msg!("📊 LP amounts - A: {}, B: {}", a_data.amount, b_data.amount);
         (a_data.amount, b_data.amount)
     };
     
+    // 2. Ler LP supplies
     let (a_vault_lp_supply, b_vault_lp_supply) = {
         let a_mint = spl_token::state::Mint::unpack(&a_vault_lp_mint.try_borrow_data()?)?;
         let b_mint = spl_token::state::Mint::unpack(&b_vault_lp_mint.try_borrow_data()?)?;
+        msg!("📊 LP supplies - A: {}, B: {}", a_mint.supply, b_mint.supply);
         (a_mint.supply, b_mint.supply)
     };
     
-    // DONUT no pool (vault A)
+    // 3. DONUT no pool (vault A)
     let donut_amount_in_pool = {
         let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)?;
-        (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128
-    } as u64;
+        msg!("🔸 Vault A token amount: {}", a_vault_data.amount);
+        
+        let pool_donut = (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128;
+        msg!("🔸 DONUT calculated in pool: {}", pool_donut);
+        pool_donut as u64
+    };
     
-    // SOL no pool (vault B) - USANDO get_amount_by_share
+    // 4. SOL no pool (vault B) - COM LOGS DETALHADOS
     let sol_amount_in_pool = {
         let clock = Clock::get()?;
+        msg!("⏰ Current timestamp: {}", clock.unix_timestamp);
+        
         let buffer_data = spl_token::state::Account::unpack(&b_token_vault.try_borrow_data()?)?;
+        msg!("🔹 Vault B buffer amount: {}", buffer_data.amount);
+        
+        // Calcular utilização
+        let utilization = b_vault_lp_amount as f64 / b_vault_lp_supply as f64;
+        msg!("📈 Vault B utilization ratio: {:.6}", utilization);
         
         // Estimar vault total
-        let utilization = b_vault_lp_amount as f64 / b_vault_lp_supply as f64;
-        let estimated_vault_total = (buffer_data.amount as f64 * if utilization > 0.5 { 10.0 } else { 8.0 }) as u64;
+        let vault_multiplier = if utilization > 0.5 { 
+            msg!("🔥 High utilization detected, using multiplier 10.0");
+            10.0 
+        } else { 
+            msg!("📉 Low utilization detected, using multiplier 8.0");
+            8.0 
+        };
         
-        // 🎯 USAR get_amount_by_share aqui
-        get_amount_by_share(
+        let estimated_vault_total = (buffer_data.amount as f64 * vault_multiplier) as u64;
+        msg!("🎯 Estimated vault B total: {} (buffer {} × {:.1})", 
+             estimated_vault_total, buffer_data.amount, vault_multiplier);
+        
+        // Aplicar get_amount_by_share
+        let sol_in_pool = get_amount_by_share(
             clock.unix_timestamp,
             b_vault_lp_amount,
             b_vault_lp_supply,
             estimated_vault_total
-        )?
+        )?;
+        
+        msg!("🔹 SOL calculated in pool: {}", sol_in_pool);
+        sol_in_pool
     };
     
-    // Regra de 3: quantos DONUT para este SOL
+    msg!("💰 FINAL POOL STATE:");
+    msg!("💰 Pool has {} DONUT and {} SOL", donut_amount_in_pool, sol_amount_in_pool);
+    
+    // 5. Regra de 3
     if sol_amount_in_pool == 0 {
+        msg!("❌ SOL amount in pool is ZERO!");
         return Err(error!(ErrorCode::MeteoraCalculationOverflow));
     }
     
+    let cotacao = donut_amount_in_pool as f64 / sol_amount_in_pool as f64;
+    msg!("📊 Cotação atual: {:.6} DONUT por 1 SOL", cotacao);
+    
     let donut_tokens_to_mint = (sol_amount as u128 * donut_amount_in_pool as u128) / sol_amount_in_pool as u128;
+    msg!("🎯 Para {} SOL → mintar {} DONUT", sol_amount, donut_tokens_to_mint);
+    
+    if donut_tokens_to_mint == 0 {
+        msg!("⚠️ Resultado zero, retornando 1");
+        return Ok(1);
+    }
     
     Ok(donut_tokens_to_mint as u64)
 }
@@ -654,13 +696,18 @@ fn process_pay_referrer<'info>(
 }
 
 //get_amount_by_share
+// 1. FUNÇÃO get_amount_by_share (com logs)
 pub fn get_amount_by_share(
     current_timestamp: i64,
     lp_token_amount: u64,
     lp_total_supply: u64,
     vault_total_amount: u64,
 ) -> Result<u64> {
+    msg!("🔍 get_amount_by_share - timestamp: {}, lp_amount: {}, lp_supply: {}, vault_total: {}", 
+         current_timestamp, lp_token_amount, lp_total_supply, vault_total_amount);
+    
     if lp_total_supply == 0 {
+        msg!("❌ LP supply is zero!");
         return Ok(0);
     }
     
@@ -669,6 +716,7 @@ pub fn get_amount_by_share(
         .and_then(|n| n.checked_div(lp_total_supply as u128))
         .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
     
+    msg!("✅ get_amount_by_share result: {}", token_amount);
     Ok(token_amount as u64)
 }
 

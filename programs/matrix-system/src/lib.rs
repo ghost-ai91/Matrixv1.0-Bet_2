@@ -9,7 +9,7 @@ use {solana_security_txt::security_txt};
 use prog_dynamic_vault::state::Vault;
 
 
-declare_id!("HaUNkssLRtTQam1nqE7xK5STcGiPV1qfWxCJxiU6Adnk");
+declare_id!("4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {

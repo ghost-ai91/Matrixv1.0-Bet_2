@@ -21,10 +21,10 @@ const idl = require("./target/idl/referral_system.json")
 
 // Configurações principais
 const PROGRAM_ID = new PublicKey(
-  "CoRsyf6xCdgfKp64dG5oEKgRZLn5ckrux5YyCLoQ9rk4"
+  "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt"
 )
 const TOKEN_MINT = new PublicKey(
-  "F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq"
+  "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"
 )
 const SPL_TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -36,7 +36,7 @@ const SYSVAR_RENT_PUBKEY = new PublicKey(
   "SysvarRent111111111111111111111111111111111"
 )
 const MULTISIG_TREASURY = new PublicKey(
-  "9kfwkhwRmjRdcUKd8YBXJKnE5Yux9k111uUSN8zbNCYh"
+  "3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t"
 )
 
 // Função para carregar uma carteira a partir de um arquivo

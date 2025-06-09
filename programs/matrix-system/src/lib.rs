@@ -3,8 +3,8 @@ use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_spl::token::{self, Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
-// ADICIONADO: Import da estrutura oficial Vault da Meteora
-use mercurial_vault::state::Vault;
+// REMOVIDO: Import externo para evitar conflitos de versão
+// Agora usamos nossa própria estrutura Vault baseada na documentação oficial da Meteora
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
@@ -75,7 +75,111 @@ pub mod admin_addresses {
 
 }
 
-// REMOVIDO: Estrutura MeteoraPool customizada - agora usamos a oficial Vault da Meteora
+// REMOVIDO: Import externo para evitar conflitos de versão
+// Agora usamos nossa própria estrutura Vault baseada na documentação oficial da Meteora
+
+// Estrutura Vault baseada na documentação oficial da Meteora
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct Vault {
+    /// The flag, if admin set enabled = false, then the user can only withdraw and cannot deposit in the vault
+    pub enabled: u8,
+    /// Vault nonce, to create vault seeds
+    pub bumps: VaultBumps,
+    /// The total liquidity of the vault, including remaining tokens in token_vault and the liquidity in all strategies
+    pub total_amount: u64,
+    /// Token account, hold liquidity in vault reserve
+    pub token_vault: Pubkey,
+    /// Hold lp token of vault
+    pub fee_vault: Pubkey,
+    /// Token mint that vault supports
+    pub token_mint: Pubkey,
+    /// Lp mint of vault
+    pub lp_mint: Pubkey,
+    /// The list of strategy addresses that vault supports
+    pub strategies: Vec<Pubkey>,
+    /// Base vault for calculating performance fees
+    pub base: Pubkey,
+    /// Last report timestamp for yield calculation
+    pub last_report: i64,
+    /// Hourly yield rate (with 18 decimals precision)
+    pub hourly_rate: u64,
+    /// Reserved space for future upgrades
+    pub reserved: [u64; 32],
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct VaultBumps {
+    pub vault_bump: u8,
+    pub token_vault_bump: u8,
+}
+
+impl anchor_lang::AccountDeserialize for Vault {
+    fn try_deserialize_unchecked(buf: &mut &[u8]) -> anchor_lang::Result<Self> {
+        Self::deserialize(buf).map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize.into())
+    }
+}
+
+impl Vault {
+    // Implementação do método get_amount_by_share baseada no código oficial da Meteora
+    pub fn get_amount_by_share(
+        &self,
+        current_time: u64,
+        lp_amount: u64,
+        lp_supply: u64,
+    ) -> Result<u64> {
+        if lp_supply == 0 {
+            return Ok(0);
+        }
+
+        // Calcula yields acumulados
+        let total_amount_with_yield = self.calculate_total_amount_with_yield(current_time)?;
+        
+        // Calcula a proporção: (lp_amount / lp_supply) * total_amount_with_yield
+        let amount = (lp_amount as u128)
+            .checked_mul(total_amount_with_yield as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?
+            .checked_div(lp_supply as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        if amount > u64::MAX as u128 {
+            return Err(error!(ErrorCode::MeteoraCalculationOverflow));
+        }
+
+        Ok(amount as u64)
+    }
+
+    fn calculate_total_amount_with_yield(&self, current_time: u64) -> Result<u64> {
+        if self.enabled == 0 {
+            return Ok(self.total_amount);
+        }
+
+        let time_elapsed = current_time.saturating_sub(self.last_report as u64);
+        
+        if time_elapsed == 0 || self.hourly_rate == 0 {
+            return Ok(self.total_amount);
+        }
+
+        // Calcula yield: total_amount * hourly_rate * (time_elapsed / 3600)
+        let hourly_rate_scaled = self.hourly_rate / 1_000_000_000_000_000_000; // Remove 18 decimals
+        let hours_elapsed = time_elapsed / 3600; // Convert seconds to hours
+        
+        let yield_amount = (self.total_amount as u128)
+            .checked_mul(hourly_rate_scaled as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?
+            .checked_mul(hours_elapsed as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        let total_with_yield = (self.total_amount as u128)
+            .checked_add(yield_amount)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        if total_with_yield > u64::MAX as u128 {
+            return Ok(u64::MAX);
+        }
+
+        Ok(total_with_yield as u64)
+    }
+}
 
 // Program state structure
 #[account]

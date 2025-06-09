@@ -465,17 +465,17 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
-// FUNÇÃO CORRIGIDA - Substitua a função get_donut_tokens_amount por esta:
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
-/// FIXED VERSION for Dynamic Vaults with yield/lending on mainnet
-/// Uses manual implementation of get_amount_by_share() method
+/// SOLUÇÃO HÍBRIDA: Vault A (método original) + Vault B (com yields)
+/// Vault A funciona perfeitamente com método original
+/// Vault B precisa de get_amount_by_share() para yields da mainnet
 fn get_donut_tokens_amount<'info>(
     a_vault_lp: &AccountInfo<'info>,
     b_vault_lp: &AccountInfo<'info>,
     a_vault_lp_mint: &AccountInfo<'info>,
     b_vault_lp_mint: &AccountInfo<'info>,
-    a_token_vault: &AccountInfo<'info>,  // This is now the Vault struct, not token account
-    b_token_vault: &AccountInfo<'info>,  // This is now the Vault struct, not token account
+    a_token_vault: &AccountInfo<'info>,  // Token account normal (método original)
+    b_token_vault: &AccountInfo<'info>,  // Vault struct (método com yields)
     sol_amount: u64,
 ) -> Result<u64> {
     // Constants for calculations
@@ -484,14 +484,14 @@ fn get_donut_tokens_amount<'info>(
     // Log the input parameter
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
     
-    // 1. Get current timestamp for vault calculations
+    // 1. Get current timestamp for vault B calculations
     let clock = Clock::get()?;
     let current_time: u64 = clock.unix_timestamp.try_into().map_err(|_| {
         msg!("Failed to convert timestamp");
         error!(ErrorCode::PriceMeteoraReadFailed)
     })?;
     
-    // 2. Read LP token amounts - FAIL TRANSACTION IF ERROR
+    // 2. Read LP token amounts
     let a_vault_lp_amount: u64;
     let b_vault_lp_amount: u64;
     
@@ -519,12 +519,12 @@ fn get_donut_tokens_amount<'info>(
     
     force_memory_cleanup();
     
-    // 3. Read LP token supplies - FAIL TRANSACTION IF ERROR
+    // 3. Read LP token supplies
     let a_vault_lp_supply: u64;
     let b_vault_lp_supply: u64;
     
     {
-        // Deserialize LP mint accounts using Anchor's Mint - CORRIGIDO
+        // Deserialize LP mint accounts using Anchor's Mint
         let mut a_vault_lp_mint_data = a_vault_lp_mint.try_borrow_data()?;
         let mut b_vault_lp_mint_data = b_vault_lp_mint.try_borrow_data()?;
         
@@ -547,57 +547,83 @@ fn get_donut_tokens_amount<'info>(
     
     force_memory_cleanup();
     
-    // 4. Read Vault structs and calculate real token amounts using get_amount_by_share - CORRIGIDO
+    // 4. Read token amounts - HÍBRIDO: A original + B com yields
     let total_token_a_amount: u64;
     let total_token_b_amount: u64;
     
     {
-        // Get vault A struct - CORRIGIDO
-        let vault_a = MeteoraVault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
+        // VAULT A: Método original (funciona perfeitamente)
+        let mut a_token_vault_data = a_token_vault.try_borrow_data()?;
+        let a_vault_token_account = TokenAccount::try_deserialize_unchecked(&mut a_token_vault_data.as_ref())
             .map_err(|_| {
-                msg!("Failed to read vault A data");
+                msg!("Failed to read A token vault data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
-
-        // Get vault B struct - CORRIGIDO
+        
+        total_token_a_amount = a_vault_token_account.amount;
+        msg!("Total token A amount (original method): {}", total_token_a_amount);
+        
+        // VAULT B: Método com yields (para mainnet)
         let vault_b = MeteoraVault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault B data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
 
-        // Calculate actual token amounts using get_amount_by_share (this accounts for yields!)
-        total_token_a_amount = vault_a.get_amount_by_share(
-            current_time,
-            a_vault_lp_amount,
-            a_vault_lp_supply,
-        )?;
-
+        // Calculate vault B amount usando get_amount_by_share (considera yields!)
         total_token_b_amount = vault_b.get_amount_by_share(
             current_time,
             b_vault_lp_amount,
             b_vault_lp_supply,
         )?;
 
-        msg!("Total token amounts (with yields) - A: {}, B: {}", total_token_a_amount, total_token_b_amount);
+        msg!("Total token B amount (with yields): {}", total_token_b_amount);
     }
     
     force_memory_cleanup();
     
-    // 5. Check for zero values - FAIL TRANSACTION IF POOL IS EMPTY
+    // 5. Check for zero values
     if a_vault_lp_supply == 0 || b_vault_lp_supply == 0 || total_token_a_amount == 0 || total_token_b_amount == 0 {
         msg!("Pool has zero values - cannot calculate exchange rate");
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
     // 6. Convert to i128 for safe calculations
+    let a_lp_amount_big = a_vault_lp_amount as i128;
+    let a_lp_supply_big = a_vault_lp_supply as i128;
     let token_a_big = total_token_a_amount as i128;
     let token_b_big = total_token_b_amount as i128;
     let sol_amount_big = sol_amount as i128;
     
-    // 7. Calculate the exchange ratio: token_a / token_b
-    let basic_ratio = match token_a_big.checked_mul(PRECISION_FACTOR) {
-        Some(num) => match num.checked_div(token_b_big) {
+    // 7. Calculate pool token A usando LP shares (método original)
+    let pool_token_a = match token_a_big.checked_mul(a_lp_amount_big) {
+        Some(num) => match num.checked_div(a_lp_supply_big) {
+            Some(result) => result,
+            None => {
+                msg!("Division overflow in pool_token_a calculation");
+                return Err(error!(ErrorCode::MeteoraCalculationOverflow));
+            }
+        },
+        None => {
+            msg!("Multiplication overflow in pool_token_a calculation");
+            return Err(error!(ErrorCode::MeteoraCalculationOverflow));
+        }
+    };
+    
+    // 8. Para vault B, o valor já está calculado com yields, então usamos diretamente
+    let pool_token_b = token_b_big;
+    
+    msg!("Pool tokens - A: {}, B (with yields): {}", pool_token_a, pool_token_b);
+    
+    // 9. Check for zero values after calculation
+    if pool_token_a == 0 || pool_token_b == 0 {
+        msg!("Calculated pool tokens are zero");
+        return Err(error!(ErrorCode::MeteoraCalculationOverflow));
+    }
+    
+    // 10. Calculate the exchange ratio: pool_token_a / pool_token_b
+    let basic_ratio = match pool_token_a.checked_mul(PRECISION_FACTOR) {
+        Some(num) => match num.checked_div(pool_token_b) {
             Some(result) => result,
             None => {
                 msg!("Division overflow in basic_ratio calculation");
@@ -610,9 +636,9 @@ fn get_donut_tokens_amount<'info>(
         }
     };
     
-    msg!("Exchange ratio (token_a/token_b scaled): {}", basic_ratio);
+    msg!("Exchange ratio (token_a/token_b with yields): {}", basic_ratio);
     
-    // 8. Calculate donut tokens: sol_amount * (token_a / token_b)
+    // 11. Calculate donut tokens: sol_amount * (token_a / token_b)
     let donut_tokens_scaled = match sol_amount_big.checked_mul(basic_ratio) {
         Some(result) => result,
         None => {
@@ -623,7 +649,7 @@ fn get_donut_tokens_amount<'info>(
     
     msg!("Donut tokens scaled: {}", donut_tokens_scaled);
     
-    // 9. Remove precision factor
+    // 12. Remove precision factor
     let donut_tokens_big = match donut_tokens_scaled.checked_div(PRECISION_FACTOR) {
         Some(result) => result,
         None => {
@@ -634,18 +660,18 @@ fn get_donut_tokens_amount<'info>(
 
     msg!("donut_tokens_big (i128): {}", donut_tokens_big);
     
-    // 10. Check for overflow to u64
+    // 13. Check for overflow to u64
     if donut_tokens_big > i128::from(u64::MAX) {
         msg!("donut_tokens_big exceeds u64::MAX");
         return Err(error!(ErrorCode::MeteoraCalculationOverflow));
     }
 
-    // 11. Convert to u64
+    // 14. Convert to u64
     let donut_tokens = donut_tokens_big as u64;
 
     msg!("Final donut_tokens (u64): {}", donut_tokens);
     
-    // 12. Handle zero result
+    // 15. Handle zero result
     if donut_tokens == 0 {
         msg!("Zero or small calculated value, returning minimum");
         return Ok(1); // Smallest possible value

@@ -257,37 +257,42 @@ async function main() {
     });
     console.log('Connecting to Devnet');
     
-  // Configure important addresses
-  const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
-  const TOKEN_MINT = new PublicKey(config.tokenMint || "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
-  const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
-   
-  // Pool and vault addresses
-  const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
-  
-  // Vault A addresses (DONUT) - UPDATED with corrected addresses from the library
-  const A_VAULT_LP = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
-  const A_VAULT_LP_MINT = new PublicKey("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
-  const A_TOKEN_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
-  
-  // Vault B addresses (SOL) - UPDATED with corrected addresses from the library
-  const B_VAULT = new PublicKey("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
-  const B_TOKEN_VAULT = new PublicKey("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
-  const B_VAULT_LP_MINT = new PublicKey("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
-  const B_VAULT_LP = new PublicKey("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
-  const VAULT_PROGRAM = new PublicKey("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-  
-  // Chainlink addresses (Devnet) - UPDATED with corrected addresses from the library
-  const CHAINLINK_PROGRAM = new PublicKey("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
-  const SOL_USD_FEED = new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
-
-  // System programs
-  const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
-  const SPL_TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-  const SYSTEM_PROGRAM_ID = new PublicKey("11111111111111111111111111111111");
-  const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-  const SYSVAR_RENT_PUBKEY = new PublicKey("SysvarRent111111111111111111111111111111111");
+   // Configure important addresses
+   const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
+   const TOKEN_MINT = new PublicKey(config.tokenMint || "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
+   const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
     
+   // Pool and vault addresses
+   const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
+   
+   // Vault A addresses (DONUT) - UPDATED with corrected addresses from the library
+   const A_VAULT_LP = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
+   const A_VAULT_LP_MINT = new PublicKey("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
+   const A_TOKEN_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
+   const A_VAULT_STATE = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN"); // ADICIONADO
+
+   
+   // Vault B addresses (SOL) - UPDATED with corrected addresses from the library
+   const B_VAULT = new PublicKey("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
+   const B_TOKEN_VAULT = new PublicKey("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
+   const B_VAULT_LP_MINT = new PublicKey("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
+   const B_VAULT_LP = new PublicKey("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
+   const VAULT_PROGRAM = new PublicKey("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
+   
+   // Chainlink addresses (Devnet) - UPDATED with corrected addresses from the library
+   const CHAINLINK_PROGRAM = new PublicKey("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
+   const SOL_USD_FEED = new PublicKey("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
+
+   // System programs
+   const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+   const SPL_TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+   const SYSTEM_PROGRAM_ID = new PublicKey("11111111111111111111111111111111");
+   const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+   const SYSVAR_RENT_PUBKEY = new PublicKey("SysvarRent111111111111111111111111111111111");
+    
+
+
+
     // Create wallet using Anchor's Wallet class
     const anchorWallet = new Wallet(walletKeypair);
     

@@ -1315,7 +1315,7 @@ pub struct RegisterWithSolDeposit<'info> {
     // Existing accounts for vault B (SOL)
     /// CHECK: Vault B state account from Meteora (CORRECTED)
     #[account(address = verified_addresses::B_VAULT)]
-    pub b_vault: AccountInfo<'info>,
+    pub b_vault: UncheckedAccount<'info>,
 
     /// CHECK: Token vault account for token B (SOL)
     #[account(mut)]
@@ -1464,7 +1464,7 @@ pub mod referral_system {
         &ctx.accounts.user_wallet.to_account_info(),
         &ctx.accounts.user_source_token.to_account_info(),
         &ctx.accounts.b_vault_lp.to_account_info(),
-        &ctx.accounts.b_vault,
+        &UncheckedAccount::try_from(&ctx.accounts.b_vault).unwrap(),
         &ctx.accounts.b_token_vault.to_account_info(),
         &ctx.accounts.b_vault_lp_mint.to_account_info(),
         &ctx.accounts.vault_program,
@@ -1642,7 +1642,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(ctx: Context<'a, 'b, 'c, 'in
             &ctx.accounts.user_wallet.to_account_info(),
             &ctx.accounts.user_wsol_account.to_account_info(),
             &ctx.accounts.b_vault_lp.to_account_info(),
-            &ctx.accounts.b_vault,
+            &UncheckedAccount::try_from(&ctx.accounts.b_vault).unwrap(),
             &ctx.accounts.b_token_vault.to_account_info(),
             &ctx.accounts.b_vault_lp_mint.to_account_info(),
             &ctx.accounts.vault_program,
@@ -1902,7 +1902,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(ctx: Context<'a, 'b, 'c, 'in
                             &ctx.accounts.user_wallet.to_account_info(),
                             &ctx.accounts.user_wsol_account.to_account_info(),
                             &ctx.accounts.b_vault_lp.to_account_info(),
-                            &ctx.accounts.b_vault,
+                            &UncheckedAccount::try_from(&ctx.accounts.b_vault).unwrap(),
                             &ctx.accounts.b_token_vault.to_account_info(),
                             &ctx.accounts.b_vault_lp_mint.to_account_info(),
                             &ctx.accounts.vault_program,
@@ -2110,7 +2110,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(ctx: Context<'a, 'b, 'c, 'in
                         &ctx.accounts.user_wallet.to_account_info(),
                         &ctx.accounts.user_wsol_account.to_account_info(),
                         &ctx.accounts.b_vault_lp.to_account_info(),
-                        &ctx.accounts.b_vault,
+                        &UncheckedAccount::try_from(&ctx.accounts.b_vault).unwrap(),
                         &ctx.accounts.b_token_vault.to_account_info(),
                         &ctx.accounts.b_vault_lp_mint.to_account_info(),
                         &ctx.accounts.vault_program,

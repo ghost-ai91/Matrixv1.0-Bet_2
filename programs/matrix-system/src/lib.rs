@@ -67,9 +67,9 @@ pub mod verified_addresses {
 pub mod admin_addresses {
     use solana_program::pubkey::Pubkey;
 
-    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("9kfwkhwRmjRdcUKd8YBXJKnE5Yux9k111uUSN8zbNCYh");
+    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
 
-    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("6psmWBYCLTVbX31Aq7BDRCHpd33EN5ihtTWQbb4quDy6");
+    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
 
 }
 

@@ -553,15 +553,14 @@ fn get_donut_tokens_amount<'info>(
     
     {
         // VAULT A: Método original (funciona perfeitamente)
-        let a_token_vault_data = match spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?) {
-            Ok(data) => data,
-            Err(_) => {
+        let mut a_token_vault_data = a_token_vault.try_borrow_data()?;
+        let a_vault_token_account = TokenAccount::try_deserialize_unchecked(&mut a_token_vault_data.as_ref())
+            .map_err(|_| {
                 msg!("Failed to read A token vault data");
-                return Err(error!(ErrorCode::PriceMeteoraReadFailed));
-            }
-        };
+                error!(ErrorCode::PriceMeteoraReadFailed)
+            })?;
         
-        total_token_a_amount = a_token_vault_data.amount;
+        total_token_a_amount = a_vault_token_account.amount;
         msg!("Total token A amount (original method): {}", total_token_a_amount);
         
         // VAULT B: Método com yields (para mainnet)

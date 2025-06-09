@@ -6,8 +6,6 @@ use chainlink_solana as chainlink;
 use solana_program::program_pack::Pack;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
-use prog_dynamic_vault::state::Vault;
-
 
 declare_id!("4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
 
@@ -74,6 +72,27 @@ pub mod admin_addresses {
 
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("6psmWBYCLTVbX31Aq7BDRCHpd33EN5ihtTWQbb4quDy6");
 
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct MeteoraVault {
+    pub enabled: bool,
+    pub bumps: VaultBumps,
+    pub total_amount: u64,
+    pub token_vault: Pubkey,
+    pub lp_mint: Pubkey,
+    pub strategy: Pubkey,
+    pub reserve: u64,
+    pub performance_fee_rate: u64,
+    pub hourly_rate: u128,
+    pub last_report: i64,
+    pub lock_duration: i64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct VaultBumps {
+    pub vault_bump: u8,
+    pub token_vault_bump: u8,
 }
 
 // Program state structure
@@ -277,6 +296,68 @@ impl std::fmt::Display for Decimal {
     }
 }
 
+impl MeteoraVault {
+    // Implementação do método get_amount_by_share baseada no código da Meteora
+    pub fn get_amount_by_share(
+        &self,
+        current_time: u64,
+        lp_amount: u64,
+        lp_supply: u64,
+    ) -> Result<u64> {
+        if lp_supply == 0 {
+            return Ok(0);
+        }
+
+        // Calcula yields acumulados
+        let total_amount_with_yield = self.calculate_total_amount_with_yield(current_time)?;
+        
+        // Calcula a proporção: (lp_amount / lp_supply) * total_amount_with_yield
+        let amount = (lp_amount as u128)
+            .checked_mul(total_amount_with_yield as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?
+            .checked_div(lp_supply as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        if amount > u64::MAX as u128 {
+            return Err(error!(ErrorCode::MeteoraCalculationOverflow));
+        }
+
+        Ok(amount as u64)
+    }
+
+    fn calculate_total_amount_with_yield(&self, current_time: u64) -> Result<u64> {
+        if !self.enabled {
+            return Ok(self.total_amount);
+        }
+
+        let time_elapsed = current_time.saturating_sub(self.last_report as u64);
+        
+        if time_elapsed == 0 || self.hourly_rate == 0 {
+            return Ok(self.total_amount);
+        }
+
+        // Calcula yield: total_amount * hourly_rate * (time_elapsed / 3600)
+        let hourly_rate_scaled = self.hourly_rate / 1_000_000_000_000_000_000; // Remove 18 decimals
+        let hours_elapsed = time_elapsed / 3600; // Convert seconds to hours
+        
+        let yield_amount = (self.total_amount as u128)
+            .checked_mul(hourly_rate_scaled)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?
+            .checked_mul(hours_elapsed as u128)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        let total_with_yield = (self.total_amount as u128)
+            .checked_add(yield_amount)
+            .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+
+        if total_with_yield > u64::MAX as u128 {
+            return Ok(u64::MAX);
+        }
+
+        Ok(total_with_yield as u64)
+    }
+}
+
 // Helper function to force memory cleanup
 fn force_memory_cleanup() {
     // Just create a vector to force a heap allocation
@@ -378,9 +459,10 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
+// FUNÇÃO CORRIGIDA (substitua a sua função get_donut_tokens_amount por esta):
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
 /// FIXED VERSION for Dynamic Vaults with yield/lending on mainnet
-/// Uses get_amount_by_share() method to get correct vault amounts
+/// Uses manual implementation of get_amount_by_share() method
 fn get_donut_tokens_amount<'info>(
     a_vault_lp: &AccountInfo<'info>,
     b_vault_lp: &AccountInfo<'info>,
@@ -465,14 +547,14 @@ fn get_donut_tokens_amount<'info>(
     
     {
         // Get vault A struct
-        let vault_a = Vault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
+        let vault_a = MeteoraVault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault A data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
 
         // Get vault B struct  
-        let vault_b = Vault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
+        let vault_b = MeteoraVault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault B data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
@@ -483,19 +565,13 @@ fn get_donut_tokens_amount<'info>(
             current_time,
             a_vault_lp_amount,
             a_vault_lp_supply,
-        ).map_err(|_| {
-            msg!("Failed to get token A amount");
-            error!(ErrorCode::PriceMeteoraReadFailed)
-        })?;
+        )?;
 
         total_token_b_amount = vault_b.get_amount_by_share(
             current_time,
             b_vault_lp_amount,
             b_vault_lp_supply,
-        ).map_err(|_| {
-            msg!("Failed to get token B amount");
-            error!(ErrorCode::PriceMeteoraReadFailed)
-        })?;
+        )?;
 
         msg!("Total token amounts (with yields) - A: {}, B: {}", total_token_a_amount, total_token_b_amount);
     }

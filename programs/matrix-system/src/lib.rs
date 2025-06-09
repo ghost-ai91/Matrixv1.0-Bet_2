@@ -48,7 +48,7 @@ pub mod verified_addresses {
 
     // Pool and core addresses
     pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq"); // DONUT
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"); // DONUT
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // Vault A addresses (DONUT vault) - From your transaction

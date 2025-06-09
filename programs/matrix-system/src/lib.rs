@@ -296,7 +296,7 @@ impl std::fmt::Display for Decimal {
     }
 }
 
-impl MeteoraVault {
+impl MeteoraPool {
     // Implementação do método get_amount_by_share baseada no código da Meteora
     pub fn get_amount_by_share(
         &self,
@@ -544,13 +544,13 @@ fn get_donut_tokens_amount<'info>(
     
     {
         // Lê as structs Vault A e B (não token accounts)
-        let vault_a = MeteoraVault::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
+        let vault_a = MeteoraPool::try_deserialize_unchecked(&mut a_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault A data");
                 error!(ErrorCode::PriceMeteoraReadFailed)
             })?;
 
-        let vault_b = MeteoraVault::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
+        let vault_b = MeteoraPool::try_deserialize_unchecked(&mut b_token_vault.try_borrow_data()?.as_ref())
             .map_err(|_| {
                 msg!("Failed to read vault B data");
                 error!(ErrorCode::PriceMeteoraReadFailed)

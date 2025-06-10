@@ -24,9 +24,5 @@ chainlink_solana = "1.0.0"
 solana-security-txt = "1.1.1"
 default-env = "0.1.1" 
 
-[dev-dependencies]
-assert_matches = "1.5.0"
-solana-program-test = "1.18.15"
-solana-sdk = "1.18.15"
-tokio = "1.35.0"
+
 

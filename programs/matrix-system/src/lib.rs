@@ -426,7 +426,7 @@ fn get_donut_tokens_amount<'info>(
     // 4. Calculate DONUT in pool (vault A) - Simple calculation as vault A has no lending
     let donut_amount_in_pool = {
         // Read vault A state
-        let vault_a_data = {
+        let donut_amount = {
             let data = a_vault.try_borrow_data()?;
             if data.len() < 8 + 1 + 10 + 8 + 8 {
                 msg!("⚠️ Vault A data too small, using simple calculation");
@@ -456,8 +456,8 @@ fn get_donut_tokens_amount<'info>(
             }
         };
         
-        msg!("🔸 DONUT calculated in pool: {}", donut_amount_in_pool);
-        donut_amount_in_pool as u64
+        msg!("🔸 DONUT calculated in pool: {}", donut_amount);
+        donut_amount as u64
     };
     
     // 5. Calculate SOL in pool (vault B) - CRITICAL FIX: Use vault state total_amount

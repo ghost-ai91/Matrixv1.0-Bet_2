@@ -49,13 +49,14 @@ async function main() {
     
     // Configurar endereços importantes
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
-    const TOKEN_MINT = new PublicKey(config.tokenMint || "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
+    const TOKEN_MINT = new PublicKey(config.tokenMint || "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
     const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
     
     // Pool e vault addresses
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
-    // Vault A addresses (DONUT)
+    // Vault A addresses (DONUT) - CORRIGIDO com endereço correto do A_VAULT
+    const A_VAULT = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
     const A_VAULT_LP = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
     const A_VAULT_LP_MINT = new PublicKey("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
     const A_TOKEN_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
@@ -227,21 +228,35 @@ async function main() {
     // ==== ETAPA 2: EXECUTAR REGISTRO DIRETAMENTE ====
     console.log("\n📋 ETAPA 2: EXECUTAR REGISTRO DO USUÁRIO BASE");
     
-    // Preparar os remaining accounts para Vault A e Chainlink
+    // Preparar os remaining accounts CORRIGIDOS - incluindo pool e A_VAULT
     const remainingAccounts = [
-      { pubkey: A_VAULT_LP, isWritable: true, isSigner: false },
-      { pubkey: A_VAULT_LP_MINT, isWritable: true, isSigner: false },
-      { pubkey: A_TOKEN_VAULT, isWritable: true, isSigner: false },
-      { pubkey: SOL_USD_FEED, isWritable: false, isSigner: false },
-      { pubkey: CHAINLINK_PROGRAM, isWritable: false, isSigner: false },
+      { pubkey: POOL_ADDRESS, isWritable: false, isSigner: false },      // Index 0: Pool
+      { pubkey: A_VAULT, isWritable: false, isSigner: false },          // Index 1: Vault A state
+      { pubkey: A_VAULT_LP, isWritable: false, isSigner: false },       // Index 2: Vault A LP
+      { pubkey: A_VAULT_LP_MINT, isWritable: false, isSigner: false },  // Index 3: Vault A LP Mint
+      { pubkey: A_TOKEN_VAULT, isWritable: false, isSigner: false },    // Index 4: Token A Vault
+      { pubkey: SOL_USD_FEED, isWritable: false, isSigner: false },     // Index 5: Feed
+      { pubkey: CHAINLINK_PROGRAM, isWritable: false, isSigner: false }, // Index 6: Program
     ];
     
-    console.log("\n🔍 INCLUINDO REMAINING_ACCOUNTS PARA VAULT A E CHAINLINK...");
+    console.log("\n🔍 INCLUINDO REMAINING_ACCOUNTS PARA POOL, VAULT A E CHAINLINK...");
+    console.log("  ✓ POOL_ADDRESS: " + POOL_ADDRESS.toString());
+    console.log("  ✓ A_VAULT: " + A_VAULT.toString());
     console.log("  ✓ A_VAULT_LP: " + A_VAULT_LP.toString());
     console.log("  ✓ A_VAULT_LP_MINT: " + A_VAULT_LP_MINT.toString());
     console.log("  ✓ A_TOKEN_VAULT: " + A_TOKEN_VAULT.toString());
     console.log("  ✓ SOL_USD_FEED: " + SOL_USD_FEED.toString());
     console.log("  ✓ CHAINLINK_PROGRAM: " + CHAINLINK_PROGRAM.toString());
+    
+    // Verificar ordem correta
+    console.log("\n🔍 VERIFICANDO ORDEM DOS REMAINING_ACCOUNTS:");
+    console.log(`  Index 0 (Pool): ${remainingAccounts[0].pubkey.toString()}`);
+    console.log(`  Index 1 (A_Vault): ${remainingAccounts[1].pubkey.toString()}`);
+    console.log(`  Index 2 (A_Vault_LP): ${remainingAccounts[2].pubkey.toString()}`);
+    console.log(`  Index 3 (A_Vault_LP_Mint): ${remainingAccounts[3].pubkey.toString()}`);
+    console.log(`  Index 4 (A_Token_Vault): ${remainingAccounts[4].pubkey.toString()}`);
+    console.log(`  Index 5 (Feed): ${remainingAccounts[5].pubkey.toString()}`);
+    console.log(`  Index 6 (Program): ${remainingAccounts[6].pubkey.toString()}`);
     
     // Aumentar compute units
     const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({

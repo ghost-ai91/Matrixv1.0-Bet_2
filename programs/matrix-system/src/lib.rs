@@ -9,7 +9,7 @@ use solana_program::program_pack::Pack;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
+declare_id!("6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -61,7 +61,7 @@ pub mod verified_addresses {
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // Chainlink addresses (Devnet)

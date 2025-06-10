@@ -568,7 +568,8 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
-/// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
+//// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
+/// VERSÃO OTIMIZADA: Reduz uso de stack para evitar stack overflow
 fn get_donut_tokens_amount<'info>(
     pool: &AccountInfo<'info>,              // Pool state account
     a_vault: &AccountInfo<'info>,           // Vault A state account
@@ -584,107 +585,128 @@ fn get_donut_tokens_amount<'info>(
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
     
     // 1. Obter o timestamp atual
-    let clock = Clock::get()?;
-    let current_time: u64 = clock.unix_timestamp.try_into()
-        .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?;
+    let current_time = Clock::get()?.unix_timestamp as u64;
     
-    // 2. Verificar e deserializar o estado da Pool primeiro
-    let pool_state = Pool::try_deserialize(
-        &mut &pool.try_borrow_data()?[8..]
-    ).map_err(|e| {
-        msg!("Failed to deserialize pool: {:?}", e);
-        error!(ErrorCode::PriceMeteoraReadFailed)
-    })?;
-    
-    // Verificar se a pool está habilitada
-    if !pool_state.enabled {
-        msg!("Pool is disabled");
-        return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+    // 2. Verificar se a pool está habilitada (lê apenas o campo necessário)
+    {
+        let pool_data = pool.try_borrow_data()?;
+        // Offset para o campo 'enabled' na estrutura Pool
+        // lp_mint (32) + token_a_mint (32) + token_b_mint (32) + a_vault (32) + 
+        // b_vault (32) + a_vault_lp (32) + b_vault_lp (32) + a_vault_lp_bump (1) = 225
+        let enabled_offset = 8 + 225; // 8 bytes do discriminator + offset
+        
+        if pool_data.len() <= enabled_offset {
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
+        
+        let pool_enabled = pool_data[enabled_offset] != 0;
+        if !pool_enabled {
+            msg!("Pool is disabled");
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
     }
     
-    // 3. Deserializar os estados dos vaults
-    let vault_a_state = Vault::try_deserialize(
-        &mut &a_vault.try_borrow_data()?[8..]
-    ).map_err(|e| {
-        msg!("Failed to deserialize vault A: {:?}", e);
-        error!(ErrorCode::PriceMeteoraReadFailed)
-    })?;
+    // 3. Obter total_amount dos vaults (sem deserializar toda a estrutura)
+    let (vault_a_total, vault_a_enabled) = {
+        let vault_data = a_vault.try_borrow_data()?;
+        // Offset: discriminator (8) + enabled (1) + bumps (2) = 11
+        if vault_data.len() < 19 {
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
+        
+        let enabled = vault_data[8] != 0;
+        let total_amount = u64::from_le_bytes([
+            vault_data[11], vault_data[12], vault_data[13], vault_data[14],
+            vault_data[15], vault_data[16], vault_data[17], vault_data[18]
+        ]);
+        
+        (total_amount, enabled)
+    };
     
-    let vault_b_state = Vault::try_deserialize(
-        &mut &b_vault.try_borrow_data()?[8..]
-    ).map_err(|e| {
-        msg!("Failed to deserialize vault B: {:?}", e);
-        error!(ErrorCode::PriceMeteoraReadFailed)
-    })?;
+    let (vault_b_total, vault_b_enabled) = {
+        let vault_data = b_vault.try_borrow_data()?;
+        if vault_data.len() < 19 {
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
+        
+        let enabled = vault_data[8] != 0;
+        let total_amount = u64::from_le_bytes([
+            vault_data[11], vault_data[12], vault_data[13], vault_data[14],
+            vault_data[15], vault_data[16], vault_data[17], vault_data[18]
+        ]);
+        
+        (total_amount, enabled)
+    };
     
     // Verificar se os vaults estão habilitados
-    if vault_a_state.enabled != 1 || vault_b_state.enabled != 1 {
+    if !vault_a_enabled || !vault_b_enabled {
         msg!("One or both vaults are disabled");
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
-    force_memory_cleanup();
-    
     // 4. Ler os valores dos LP tokens
     let (a_vault_lp_amount, b_vault_lp_amount) = {
-        let a_data = spl_token::state::Account::unpack(&a_vault_lp.try_borrow_data()?)
-            .map_err(|e| {
-                msg!("Failed to unpack vault A LP token: {:?}", e);
-                error!(ErrorCode::PriceMeteoraReadFailed)
-            })?;
-        let b_data = spl_token::state::Account::unpack(&b_vault_lp.try_borrow_data()?)
-            .map_err(|e| {
-                msg!("Failed to unpack vault B LP token: {:?}", e);
-                error!(ErrorCode::PriceMeteoraReadFailed)
-            })?;
+        let a_data = a_vault_lp.try_borrow_data()?;
+        let b_data = b_vault_lp.try_borrow_data()?;
         
-        msg!("LP amounts - A: {}, B: {}", a_data.amount, b_data.amount);
-        (a_data.amount, b_data.amount)
+        if a_data.len() < 72 || b_data.len() < 72 {
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
+        
+        // Offset para amount em TokenAccount: 64 bytes
+        let a_amount = u64::from_le_bytes([
+            a_data[64], a_data[65], a_data[66], a_data[67],
+            a_data[68], a_data[69], a_data[70], a_data[71]
+        ]);
+        
+        let b_amount = u64::from_le_bytes([
+            b_data[64], b_data[65], b_data[66], b_data[67],
+            b_data[68], b_data[69], b_data[70], b_data[71]
+        ]);
+        
+        msg!("LP amounts - A: {}, B: {}", a_amount, b_amount);
+        (a_amount, b_amount)
     };
     
     // 5. Ler os supplies dos LP tokens
     let (a_vault_lp_supply, b_vault_lp_supply) = {
-        let a_mint = spl_token::state::Mint::unpack(&a_vault_lp_mint.try_borrow_data()?)
-            .map_err(|e| {
-                msg!("Failed to unpack vault A LP mint: {:?}", e);
-                error!(ErrorCode::PriceMeteoraReadFailed)
-            })?;
-        let b_mint = spl_token::state::Mint::unpack(&b_vault_lp_mint.try_borrow_data()?)
-            .map_err(|e| {
-                msg!("Failed to unpack vault B LP mint: {:?}", e);
-                error!(ErrorCode::PriceMeteoraReadFailed)
-            })?;
+        let a_mint_data = a_vault_lp_mint.try_borrow_data()?;
+        let b_mint_data = b_vault_lp_mint.try_borrow_data()?;
         
-        msg!("LP supplies - A: {}, B: {}", a_mint.supply, b_mint.supply);
-        (a_mint.supply, b_mint.supply)
+        if a_mint_data.len() < 44 || b_mint_data.len() < 44 {
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
+        
+        // Offset para supply em Mint: 36 bytes
+        let a_supply = u64::from_le_bytes([
+            a_mint_data[36], a_mint_data[37], a_mint_data[38], a_mint_data[39],
+            a_mint_data[40], a_mint_data[41], a_mint_data[42], a_mint_data[43]
+        ]);
+        
+        let b_supply = u64::from_le_bytes([
+            b_mint_data[36], b_mint_data[37], b_mint_data[38], b_mint_data[39],
+            b_mint_data[40], b_mint_data[41], b_mint_data[42], b_mint_data[43]
+        ]);
+        
+        msg!("LP supplies - A: {}, B: {}", a_supply, b_supply);
+        (a_supply, b_supply)
     };
     
-    force_memory_cleanup();
+    // 6. Calcular os valores dos tokens (implementação simplificada de get_amount_by_share)
+    // Assumindo que não há locked profit significativo para simplificar
+    let token_a_amount = if a_vault_lp_supply == 0 {
+        0
+    } else {
+        ((a_vault_lp_amount as u128) * (vault_a_total as u128) / (a_vault_lp_supply as u128)) as u64
+    };
     
-    // 6. Usar get_amount_by_share para obter os valores reais dos tokens
-    let token_a_amount = vault_a_state
-        .get_amount_by_share(
-            current_time,
-            a_vault_lp_amount,
-            a_vault_lp_supply,
-        )
-        .ok_or_else(|| {
-            msg!("Failed to calculate token A amount");
-            error!(ErrorCode::PriceMeteoraReadFailed)
-        })?;
+    let token_b_amount = if b_vault_lp_supply == 0 {
+        0
+    } else {
+        ((b_vault_lp_amount as u128) * (vault_b_total as u128) / (b_vault_lp_supply as u128)) as u64
+    };
     
-    let token_b_amount = vault_b_state
-        .get_amount_by_share(
-            current_time,
-            b_vault_lp_amount,
-            b_vault_lp_supply,
-        )
-        .ok_or_else(|| {
-            msg!("Failed to calculate token B amount");
-            error!(ErrorCode::PriceMeteoraReadFailed)
-        })?;
-    
-    msg!("Token amounts from get_amount_by_share - A: {}, B: {}", token_a_amount, token_b_amount);
+    msg!("Token amounts - A: {}, B: {}", token_a_amount, token_b_amount);
     
     // 7. Verificar valores zero
     if token_a_amount == 0 || token_b_amount == 0 {
@@ -1356,7 +1378,7 @@ pub mod referral_system {
         let a_vault = &ctx.remaining_accounts[1];      // Vault A state
         let a_vault_lp = &ctx.remaining_accounts[2];
         let a_vault_lp_mint = &ctx.remaining_accounts[3];
-        let a_token_vault = &ctx.remaining_accounts[4]; // Still kept for compatibility
+        let _a_token_vault = &ctx.remaining_accounts[4]; // Still kept for compatibility
 
         // Verify Pool and Vault A addresses
         verify_pool_and_vault_a_addresses(

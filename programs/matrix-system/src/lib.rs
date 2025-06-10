@@ -73,15 +73,12 @@ pub mod admin_addresses {
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
 }
 
-// Meteora Vault structure (simplified version for deserialization)
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
+// Meteora Vault structure - CORRECTED with exact field order
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct MeteoraVault {
     pub enabled: u8,
-    pub bumps: [u8; 10],
-    pub total_amount: u64,        // This includes buffer + strategies
-    pub buffer_amount: u64,       // Only the buffer amount
-    // We don't need other fields for this calculation
-}
+    pub bumps: [
 
 // Program state structure
 #[account]
@@ -388,7 +385,7 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
 }
 
 /// Calculate DONUT tokens equivalent to a SOL amount using Meteora pool data
-/// CORRECTED VERSION: Now properly reads vault B total_amount for mainnet
+/// SIMPLIFIED VERSION: Focus on getting correct values
 fn get_donut_tokens_amount<'info>(
     a_vault: &AccountInfo<'info>,
     a_vault_lp: &AccountInfo<'info>,
@@ -418,88 +415,64 @@ fn get_donut_tokens_amount<'info>(
         (a_mint.supply, b_mint.supply)
     };
     
-    // 3. Get current timestamp
-    let clock = Clock::get()?;
-    let current_time = clock.unix_timestamp as u64;
-    msg!("⏰ Current timestamp: {}", current_time);
-    
-    // 4. Calculate DONUT in pool (vault A) - Simple calculation as vault A has no lending
+    // 3. Calculate DONUT in pool (vault A) - Simple calculation
     let donut_amount_in_pool = {
-        // Read vault A state
-        let donut_amount = {
-            let data = a_vault.try_borrow_data()?;
-            if data.len() < 8 + 1 + 10 + 8 + 8 {
-                msg!("⚠️ Vault A data too small, using simple calculation");
-                // Fallback to simple calculation for vault A
-                let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)?;
-                (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128
-            } else {
-                // Try to deserialize vault A
-                let mut data_slice = &data[8..];
-                match MeteoraVault::deserialize(&mut data_slice) {
-                    Ok(vault_state) => {
-                        msg!("📊 Vault A state: total_amount: {}, buffer: {}", 
-                             vault_state.total_amount, vault_state.buffer_amount);
-                        // Use get_amount_by_share logic
-                        if a_vault_lp_supply == 0 {
-                            0u128
-                        } else {
-                            (a_vault_lp_amount as u128 * vault_state.total_amount as u128) / a_vault_lp_supply as u128
-                        }
-                    },
-                    Err(_) => {
-                        msg!("⚠️ Failed to deserialize vault A, using simple calculation");
-                        let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)?;
-                        (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128
-                    }
-                }
-            }
-        };
+        // For vault A, we can use simple calculation (no lending)
+        let a_vault_data = spl_token::state::Account::unpack(&a_token_vault.try_borrow_data()?)?;
+        msg!("🔸 Vault A token amount: {}", a_vault_data.amount);
         
-        msg!("🔸 DONUT calculated in pool: {}", donut_amount);
-        donut_amount as u64
+        let pool_donut = (a_vault_data.amount as u128 * a_vault_lp_amount as u128) / a_vault_lp_supply as u128;
+        msg!("🔸 DONUT calculated in pool: {} ({})", pool_donut, pool_donut / 1_000_000_000);
+        pool_donut as u64
     };
     
-    // 5. Calculate SOL in pool (vault B) - CRITICAL FIX: Use vault state total_amount
+    // 4. Calculate SOL in pool (vault B) - CORRECTION BASED ON METEORA FEEDBACK
     let sol_amount_in_pool = {
-        // Deserialize vault B to get the total_amount
-        let vault_b_data = {
-            let data = b_vault.try_borrow_data()?;
-            if data.len() < 8 + 1 + 10 + 8 + 8 {
-                msg!("❌ Vault B data too small: {} bytes", data.len());
-                return Err(error!(ErrorCode::PriceMeteoraReadFailed));
-            }
-            
-            // Deserialize using Anchor (skip first 8 bytes discriminator)
-            let mut data_slice = &data[8..];
-            MeteoraVault::deserialize(&mut data_slice)
-                .map_err(|_| error!(ErrorCode::PriceMeteoraReadFailed))?
-        };
+        // Read vault B data to get total_amount
+        let data = b_vault.try_borrow_data()?;
+        if data.len() < 19 {  // 8 (discriminator) + 1 + 10 minimum
+            msg!("❌ Vault B data too small: {} bytes", data.len());
+            return Err(error!(ErrorCode::PriceMeteoraReadFailed));
+        }
         
-        msg!("📊 Vault B state:");
-        msg!("  - total_amount: {}", vault_b_data.total_amount);
-        msg!("  - buffer_amount: {}", vault_b_data.buffer_amount);
-        msg!("  - enabled: {}", vault_b_data.enabled);
+        // Skip discriminator (8 bytes) and read total_amount at correct offset
+        // Based on Meteora structure: enabled (1) + bumps (10) = offset 19
+        let total_amount_offset = 8 + 1 + 10;
+        let total_amount = u64::from_le_bytes([
+            data[total_amount_offset],
+            data[total_amount_offset + 1],
+            data[total_amount_offset + 2],
+            data[total_amount_offset + 3],
+            data[total_amount_offset + 4],
+            data[total_amount_offset + 5],
+            data[total_amount_offset + 6],
+            data[total_amount_offset + 7],
+        ]);
         
-        // Use Meteora's get_amount_by_share calculation
+        msg!("📊 Vault B total_amount: {} lamports ({} SOL)", total_amount, total_amount / 1_000_000_000);
+        
+        // Calculate using Meteora's formula
         let sol_in_pool = if b_vault_lp_supply == 0 {
             0
         } else {
             let amount = (b_vault_lp_amount as u128)
-                .checked_mul(vault_b_data.total_amount as u128)
+                .checked_mul(total_amount as u128)
                 .and_then(|n| n.checked_div(b_vault_lp_supply as u128))
                 .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
             amount as u64
         };
         
-        msg!("🔹 SOL calculated in pool (using total_amount): {}", sol_in_pool);
+        msg!("🔹 SOL calculated in pool: {} lamports ({} SOL)", sol_in_pool, sol_in_pool / 1_000_000_000);
         sol_in_pool
     };
     
     msg!("💰 FINAL POOL STATE:");
-    msg!("💰 Pool has {} DONUT and {} SOL", donut_amount_in_pool, sol_amount_in_pool);
+    msg!("💰 Pool has {} DONUT and {} SOL (in base units)", donut_amount_in_pool, sol_amount_in_pool);
+    msg!("💰 Pool has {} DONUT and {} SOL (human readable)", 
+         donut_amount_in_pool / 1_000_000_000, 
+         sol_amount_in_pool / 1_000_000_000);
     
-    // 6. Calculate tokens to mint using rule of three
+    // 5. Calculate tokens to mint using rule of three
     if sol_amount_in_pool == 0 {
         msg!("❌ SOL amount in pool is ZERO!");
         return Err(error!(ErrorCode::MeteoraCalculationOverflow));
@@ -513,7 +486,10 @@ fn get_donut_tokens_amount<'info>(
         .and_then(|n| n.checked_div(sol_amount_in_pool as u128))
         .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
     
-    msg!("🎯 For {} SOL → mint {} DONUT", sol_amount, donut_tokens_to_mint);
+    msg!("🎯 For {} lamports ({} SOL) → mint {} DONUT", 
+         sol_amount, 
+         sol_amount as f64 / 1_000_000_000.0,
+         donut_tokens_to_mint);
     
     if donut_tokens_to_mint == 0 {
         msg!("⚠️ Result is zero, returning 1");

@@ -73,12 +73,15 @@ pub mod admin_addresses {
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
 }
 
-// Meteora Vault structure - CORRECTED with exact field order
-#[repr(C)]
-#[derive(Clone, Copy)]
+// Meteora Vault structure (simplified version for deserialization)
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct MeteoraVault {
     pub enabled: u8,
-    pub bumps: [
+    pub bumps: [u8; 10],
+    pub total_amount: u64,        // This includes buffer + strategies
+    pub buffer_amount: u64,       // Only the buffer amount
+    // We don't need other fields for this calculation
+}
 
 // Program state structure
 #[account]

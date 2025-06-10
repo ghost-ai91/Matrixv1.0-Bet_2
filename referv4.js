@@ -1,5 +1,5 @@
 // Script to register user with referrer using Chainlink Oracle and Address Lookup Table
-// UPDATED VERSION - Compatible with the corrected library
+// CORRECTED VERSION - Including pool and vault A in remaining accounts
 const { 
   Connection, 
   Keypair, 
@@ -258,14 +258,14 @@ async function main() {
     
     // Configure important addresses
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
-    const TOKEN_MINT = new PublicKey(config.tokenMint || "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL");
+    const TOKEN_MINT = new PublicKey(config.tokenMint || "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
     const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
      
     // Pool and vault addresses
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
-    // Vault A addresses (DONUT) - UPDATED with corrected addresses from the library
-    const A_VAULT = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN"); //
+    // Vault A addresses (DONUT) - CORRECTED with the right address
+    const A_VAULT = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
     const A_VAULT_LP = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
     const A_VAULT_LP_MINT = new PublicKey("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
     const A_TOKEN_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
@@ -537,31 +537,39 @@ async function main() {
         microLamports: 5000 // Increase transaction priority
       });
       
-      // Configure Vault A and Chainlink accounts for remaining_accounts
+      // Configure Pool, Vault A and Chainlink accounts for remaining_accounts
       const vaultAAccounts = [
-        { pubkey: A_VAULT_LP, isWritable: true, isSigner: false },
-        { pubkey: A_VAULT_LP_MINT, isWritable: true, isSigner: false },
-        { pubkey: A_TOKEN_VAULT, isWritable: true, isSigner: false },
+        { pubkey: POOL_ADDRESS, isWritable: false, isSigner: false },      // Index 0: Pool
+        { pubkey: A_VAULT, isWritable: false, isSigner: false },          // Index 1: Vault A state
+        { pubkey: A_VAULT_LP, isWritable: false, isSigner: false },       // Index 2: Vault A LP
+        { pubkey: A_VAULT_LP_MINT, isWritable: false, isSigner: false },  // Index 3: Vault A LP Mint
+        { pubkey: A_TOKEN_VAULT, isWritable: false, isSigner: false },    // Index 4: Token A Vault
       ];
       
       const chainlinkAccounts = [
-        { pubkey: SOL_USD_FEED, isWritable: false, isSigner: false },      // Feed at position 3
-        { pubkey: CHAINLINK_PROGRAM, isWritable: false, isSigner: false }, // Program at position 4
+        { pubkey: SOL_USD_FEED, isWritable: false, isSigner: false },      // Index 5: Feed
+        { pubkey: CHAINLINK_PROGRAM, isWritable: false, isSigner: false }, // Index 6: Program
       ];
       
       // Combine Vault A and Chainlink accounts with uplines for complete remaining_accounts
       const allRemainingAccounts = [...vaultAAccounts, ...chainlinkAccounts, ...uplineAccounts];
       
-      // Check if indices 3 and 4 have correct addresses
+      // Check if indices have correct addresses
       console.log("\n🔍 CHECKING REMAINING_ACCOUNTS ORDER:");
-      console.log(`  Index 3 (Feed): ${allRemainingAccounts[3].pubkey.toString()}`);
-      console.log(`  Index 4 (Program): ${allRemainingAccounts[4].pubkey.toString()}`);
-      console.log(`  Expected Feed address: ${SOL_USD_FEED.toString()}`);
-      console.log(`  Expected Program address: ${CHAINLINK_PROGRAM.toString()}`);
+      console.log(`  Index 0 (Pool): ${allRemainingAccounts[0].pubkey.toString()}`);
+      console.log(`  Index 1 (A_Vault): ${allRemainingAccounts[1].pubkey.toString()}`);
+      console.log(`  Index 2 (A_Vault_LP): ${allRemainingAccounts[2].pubkey.toString()}`);
+      console.log(`  Index 3 (A_Vault_LP_Mint): ${allRemainingAccounts[3].pubkey.toString()}`);
+      console.log(`  Index 4 (A_Token_Vault): ${allRemainingAccounts[4].pubkey.toString()}`);
+      console.log(`  Index 5 (Feed): ${allRemainingAccounts[5].pubkey.toString()}`);
+      console.log(`  Index 6 (Program): ${allRemainingAccounts[6].pubkey.toString()}`);
       
-      if (!allRemainingAccounts[3].pubkey.equals(SOL_USD_FEED) || 
-          !allRemainingAccounts[4].pubkey.equals(CHAINLINK_PROGRAM)) {
-        console.error("❌ ERROR: Chainlink accounts order is incorrect!");
+      // Verify correct order
+      if (!allRemainingAccounts[0].pubkey.equals(POOL_ADDRESS) ||
+          !allRemainingAccounts[1].pubkey.equals(A_VAULT) ||
+          !allRemainingAccounts[5].pubkey.equals(SOL_USD_FEED) || 
+          !allRemainingAccounts[6].pubkey.equals(CHAINLINK_PROGRAM)) {
+        console.error("❌ ERROR: Accounts order is incorrect!");
         return;
       }
       
@@ -578,7 +586,6 @@ async function main() {
           userWsolAccount: userWsolAccount,
           wsolMint: WSOL_MINT,
           pool: POOL_ADDRESS,
-          aVault: A_VAULT, // ← ADICIONADO: Esta era a linha que faltava!
           bVault: B_VAULT,
           bTokenVault: B_TOKEN_VAULT,
           bVaultLpMint: B_VAULT_LP_MINT,

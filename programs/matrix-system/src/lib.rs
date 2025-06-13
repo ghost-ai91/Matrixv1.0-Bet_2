@@ -2687,35 +2687,6 @@ pub mod referral_system {
             msg!("Emergency deposit completed: {}", final_wsol_balance);
         }
 
-        // ALWAYS close WSOL account at the end
-        if ctx.accounts.user_wsol_account.amount == 0 {
-            let close_ix = match spl_token::instruction::close_account(
-                &token::ID,
-                &ctx.accounts.user_wsol_account.key(),
-                &ctx.accounts.user_wallet.key(),
-                &ctx.accounts.user_wallet.key(),
-                &[]
-            ) {
-                Ok(ix) => ix,
-                Err(_) => {
-                    ctx.accounts.state.is_locked = false;
-                    return Err(error!(ErrorCode::UnwrapSolFailed));
-                }
-            };
-            
-            if let Err(_) = solana_program::program::invoke(
-                &close_ix,
-                &[
-                    ctx.accounts.user_wsol_account.to_account_info(),
-                    ctx.accounts.user_wallet.to_account_info(),
-                    ctx.accounts.user_wallet.to_account_info(),
-                ],
-            ) {
-                ctx.accounts.state.is_locked = false;
-                return Err(error!(ErrorCode::UnwrapSolFailed));
-            }
-        }
-
         msg!("Registration completed successfully: slot={}, base_user={}, deposit_processed=true", 
              slot_idx + 1, is_base_user);
         

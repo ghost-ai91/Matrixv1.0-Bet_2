@@ -14,7 +14,7 @@ async function main() {
   // CONFIGURAÇÕES - ALTERE CONFORME NECESSÁRIO
   const WALLET_PATH = '/Users/dark/.config/solana/id.json'; // SEU CAMINHO DA CARTEIRA
   const KEYPAIR_PATH = './target/deploy/matrix_system-keypair.json';
-  const TOKEN_MINT = 'FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN'; // SEU TOKEN MINT
+  const TOKEN_MINT = 'CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz'; // SEU TOKEN MINT
   
   const connection = new Connection('https://weathered-quiet-theorem.solana-devnet.quiknode.pro/198997b67cb51804baeb34ed2257274aa2b2d8c0', 'confirmed');
   

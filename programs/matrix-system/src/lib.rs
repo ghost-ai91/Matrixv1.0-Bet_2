@@ -1563,7 +1563,7 @@ pub mod referral_system {
 
         // Sync the WSOL account 
         let sync_native_ix = spl_token::instruction::sync_native(
-            &token::ID,
+            &spl_token::ID, // ← CORRIGIDO
             &ctx.accounts.user_source_token.key(),
         ).map_err(|_| {
             ctx.accounts.state.is_locked = false; // Limpar lock antes de retornar erro

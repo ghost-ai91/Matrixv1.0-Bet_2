@@ -1827,7 +1827,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     // ===== RECURSION PROCESSING (SLOT 3 ONLY) =====
     if chain_completed && slot_idx == 2 {
         let mut current_user_pubkey = upline_pubkey;
-        let mut current_deposit = deposit_amount;
+        let current_deposit = deposit_amount;
         let mut _wsol_closed = false;
 
         let upline_start_idx = VAULT_A_ACCOUNTS_COUNT + 2;

@@ -1899,7 +1899,6 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
             )?;
             
             deposit_processed = true;
-            current_deposit = 0;
             msg!("Base user: {} deposited to pool", deposit_amount);
             
         } else if ctx.remaining_accounts.len() > upline_start_idx && current_deposit > 0 {
@@ -2045,7 +2044,6 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                             current_deposit
                         )?;
                         
-                        current_deposit = 0;
                         deposit_processed = true;
                         msg!("Recursion: Found SLOT 1, deposited {} to pool", deposit_amount);
                     } 
@@ -2110,8 +2108,6 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
 
                         force_memory_cleanup();
                         upline_account_data.reserved_tokens = adjusted_token_amount;
-                        current_deposit = 0;
-                        deposit_processed = true;
                         msg!("Recursion: Found SLOT 2, reserved {} SOL and minted {} tokens", deposit_amount, adjusted_token_amount);
                     }
                     else if upline_slot_idx == 2 {

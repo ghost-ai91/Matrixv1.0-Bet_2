@@ -8,7 +8,7 @@ use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik");
+declare_id!("DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -60,7 +60,7 @@ pub mod verified_addresses {
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // Chainlink addresses (Devnet)
@@ -69,15 +69,15 @@ pub mod verified_addresses {
     
     // CRITICAL SECURITY ADDRESSES 
     pub static METEORA_VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("7qW1bCFvYhG5obi4HpTJtptPUcxqWX8qeQcp71QhCVxg"); // DERIVE THIS FIRST
+    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6vcd7cv4tsqCmL1wFKe6H3ThCEgrpwfYFSiNyEWRFAp9"); // DERIVE THIS FIRST
 }
 
 // Admin account addresses
 pub mod admin_addresses {
     use solana_program::pubkey::Pubkey;
 
-    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
-    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t");
+    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
+    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
 }
 
 // ===== METEORA DYNAMIC VAULT STRUCTURES =====

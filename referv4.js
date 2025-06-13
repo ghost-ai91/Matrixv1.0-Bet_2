@@ -257,7 +257,7 @@ async function main() {
     console.log('Connecting to Devnet');
     
     // Configure important addresses
-    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
+    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
     const STATE_ADDRESS = new PublicKey(config.stateAddress || "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs");
      

@@ -3,8 +3,8 @@ const { PublicKey } = require('@solana/web3.js');
 const { utils } = require('@coral-xyz/anchor');
 
 // CONFIGURAR AQUI:
-const PROGRAM_ID = "6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik";
-const TOKEN_MINT = "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN";
+const PROGRAM_ID = "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy";
+const TOKEN_MINT = "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz";
 
 // Derivar
 const [vaultAuthority] = PublicKey.findProgramAddressSync(

@@ -141,13 +141,13 @@ async function testAddressLookupTables() {
     const addressesToAdd = [
       // Endereços do programa e tokens
       new web3.PublicKey(
-        "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt"
+        "6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik"
       ), // MATRIX_PROGRAM_ID
       new web3.PublicKey(
-        "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"
+        "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN"
       ), // TOKEN_MINT
       new web3.PublicKey(
-        "AT3N4n7kf1USFpLYN8tistARK1wCvnN8MCCmKybLBthX"
+        "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs"
       ), // STATE_ADDRESS
 
       // Endereços da Pool Meteora
@@ -156,6 +156,9 @@ async function testAddressLookupTables() {
       ), // POOL_ADDRESS
 
       // Endereços do Vault A (DONUT) - NOVOS PARA MINTAGEM PROPORCIONAL
+      new web3.PublicKey(
+        "4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN"
+      ), // A_VAULT
       new web3.PublicKey(
         "6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj"
       ), // A_TOKEN_VAULT

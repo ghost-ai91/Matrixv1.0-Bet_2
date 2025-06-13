@@ -328,7 +328,7 @@ async function main() {
     console.log("💰 CURRENT BALANCE: " + balance / 1e9 + " SOL");
     
     // Fixed deposit amount (0.065 SOL)
-    const FIXED_DEPOSIT_AMOUNT = 65_000_000;
+    const FIXED_DEPOSIT_AMOUNT = 80_000_000;
     
     if (balance < FIXED_DEPOSIT_AMOUNT + 30000000) {
       console.error("❌ ERROR: Insufficient balance! You need at least " + 
@@ -437,7 +437,7 @@ async function main() {
     console.log("🔑 PROGRAM_SOL_VAULT: " + programSolVault.toString());
     
     // CRITICAL: Use the verified program token vault address from the contract
-    const PROGRAM_TOKEN_VAULT = new PublicKey("7qW1bCFvYhG5obi4HpTJtptPUcxqWX8qeQcp71QhCVxg");
+    const PROGRAM_TOKEN_VAULT = new PublicKey("6vcd7cv4tsqCmL1wFKe6H3ThCEgrpwfYFSiNyEWRFAp9");
     console.log("🔑 PROGRAM_TOKEN_VAULT (VERIFIED): " + PROGRAM_TOKEN_VAULT.toString());
     
     // Derive referrer wallet and ATA

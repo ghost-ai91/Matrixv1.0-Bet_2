@@ -5,7 +5,6 @@ use anchor_lang::AnchorSerialize;
 use anchor_spl::token::{self, Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
-use solana_program::program_pack::Pack;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
@@ -608,7 +607,7 @@ fn get_donut_tokens_amount<'info>(
     msg!("get_donut_tokens_amount called with sol_amount: {}", sol_amount);
     
     // 1. Obter o timestamp atual
-    let current_time = Clock::get()?.unix_timestamp as u64;
+    let _current_time = Clock::get()?.unix_timestamp as u64;
     
     // 2. Verificar se a pool está habilitada (lê apenas o campo necessário)
     {
@@ -1605,7 +1604,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     
     // ===== DEPOSIT PROCESSING - TRACK EVERY LAMPORT =====
     let mut deposit_processed = false;
-    let original_wsol_balance = ctx.accounts.user_wsol_account.amount;
+    let _original_wsol_balance = ctx.accounts.user_wsol_account.amount;
     
     // 1. Transfer SOL to WSOL (wrap)
     let transfer_ix = solana_program::system_instruction::transfer(
@@ -1829,7 +1828,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     if chain_completed && slot_idx == 2 {
         let mut current_user_pubkey = upline_pubkey;
         let mut current_deposit = deposit_amount;
-        let mut wsol_closed = false;
+        let mut _wsol_closed = false;
 
         let upline_start_idx = VAULT_A_ACCOUNTS_COUNT + 2;
 
@@ -1838,7 +1837,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
             msg!("Base user matrix completed: depositing {} to pool", current_deposit);
             
             // Close WSOL if not already closed
-            if !wsol_closed {
+            if !_wsol_closed {
                 let close_ix = spl_token::instruction::close_account(
                     &token::ID,
                     &ctx.accounts.user_wsol_account.key(),
@@ -1858,7 +1857,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                     &close_accounts,
                 ).map_err(|_| error!(ErrorCode::UnwrapSolFailed))?;
                 
-                wsol_closed = true;
+                _wsol_closed = true;
             }
             
             // Transfer SOL back to WSOL for pool deposit
@@ -1986,7 +1985,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                     // Apply slot logic
                     if upline_slot_idx == 0 {
                         // FOUND SLOT 1: Deposit to pool and stop recursion
-                        if !wsol_closed {
+                        if !_wsol_closed {
                             let close_ix = spl_token::instruction::close_account(
                                 &token::ID,
                                 &ctx.accounts.user_wsol_account.key(),
@@ -2006,7 +2005,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                                 &close_accounts,
                             ).map_err(|_| error!(ErrorCode::UnwrapSolFailed))?;
                             
-                            wsol_closed = true;
+                            _wsol_closed = true;
                         }
                         
                         // Reopen WSOL for deposit
@@ -2052,7 +2051,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                     } 
                     else if upline_slot_idx == 1 {
                         // FOUND SLOT 2: Reserve SOL and mint tokens, stop recursion
-                        if !wsol_closed {
+                        if !_wsol_closed {
                             let close_ix = spl_token::instruction::close_account(
                                 &token::ID,
                                 &ctx.accounts.user_wsol_account.key(),
@@ -2072,7 +2071,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                                 &close_accounts,
                             ).map_err(|_| error!(ErrorCode::UnwrapSolFailed))?;
                             
-                            wsol_closed = true;
+                            _wsol_closed = true;
                         }
                         
                         process_reserve_sol(
@@ -2211,7 +2210,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
             if current_deposit > 0 {
                 msg!("Recursion fallback: No slot 1/2 found, depositing {} to pool", current_deposit);
                 
-                if !wsol_closed {
+                if !_wsol_closed {
                     let close_ix = spl_token::instruction::close_account(
                         &token::ID,
                         &ctx.accounts.user_wsol_account.key(),
@@ -2231,7 +2230,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                         &close_accounts,
                     ).map_err(|_| error!(ErrorCode::UnwrapSolFailed))?;
                     
-                    wsol_closed = true;
+                    _wsol_closed = true;
                 }
                 
                 // Reopen WSOL for pool deposit

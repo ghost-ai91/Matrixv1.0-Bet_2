@@ -68,9 +68,9 @@ pub mod verified_addresses {
     pub static CHAINLINK_PROGRAM: Pubkey = solana_program::pubkey!("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
     pub static SOL_USD_FEED: Pubkey = solana_program::pubkey!("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
     
-    // CRITICAL SECURITY ADDRESSES - NEVER TRUST CLIENT
+    // CRITICAL SECURITY ADDRESSES 
     pub static METEORA_VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("YOUR_DERIVED_VAULT_ADDRESS_HERE"); // DERIVE THIS FIRST
+    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("7qW1bCFvYhG5obi4HpTJtptPUcxqWX8qeQcp71QhCVxg"); // DERIVE THIS FIRST
 }
 
 // Admin account addresses

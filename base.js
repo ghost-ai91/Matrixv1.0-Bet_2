@@ -48,9 +48,9 @@ async function main() {
     console.log('Conectando à Devnet');
     
     // Configurar endereços importantes
-    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
+    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs");
     
     // Pool e vault addresses
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

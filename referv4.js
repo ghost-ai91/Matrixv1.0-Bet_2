@@ -259,7 +259,7 @@ async function main() {
     // Configure important addresses
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "AaZukNFM4D6Rn2iByQFLHtfbiacsh58XEm3yzbzvdeL");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs");
      
     // Pool and vault addresses
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

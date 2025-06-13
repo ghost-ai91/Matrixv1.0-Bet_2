@@ -1475,10 +1475,7 @@ pub struct RegisterWithSolDeposit<'info> {
     #[account(mut)]
     pub referrer_token_account: UncheckedAccount<'info>,
     
-    // Authority to mint tokens (program PDA)
-    /// CHECK: Mint authority PDA
-    #[account(
-        seeds = [b// Authority to mint tokens (program PDA)
+        // Authority to mint tokens (program PDA)
         /// CHECK: Mint authority PDA
         #[account(
             seeds = [b"token_mint_authority"],

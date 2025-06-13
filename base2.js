@@ -6,7 +6,7 @@ const path = require('path');
 
 // Receber parâmetros da linha de comando (opcional)
 const args = process.argv.slice(2);
-const walletPath = args[0] || '/root/.config/solana/id.json';
+const walletPath = args[0] || '/Users/dark/.config/solana/id.json';
 const configPath = args[1] || './matriz-config.json';
 
 async function main() {
@@ -61,7 +61,7 @@ async function main() {
     // Configurar endereços importantes
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "CSrEoisxJfho5DS76h3orCHmU2Fg9uTMP2DsoHobEwj1");
     
     // Pool e vault addresses - SECURITY ENHANCED
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

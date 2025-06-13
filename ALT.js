@@ -15,13 +15,13 @@ const idl = require("./target/idl/referral_system.json")
 
 // Configurações principais
 const PROGRAM_ID = new PublicKey(
-  "4CxdTPK3Hxq2FJNBdAT44HK6rgMrBqSdbBMbudzGkSvt"
+  "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy"
 )
 const TOKEN_MINT = new PublicKey(
-  "GNagERgSB6k6oLxpZ6kHyqaJqzS4zeJwqhhP1mTZRDTL"
+  "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"
 )
 const MULTISIG_TREASURY = new PublicKey(
-  "3T6d2oGT753nJFTY7d2dSYU4zXKRkNBkfmCxqsg6Ro4t"
+  "QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv"
 )
 
 function loadWalletFromFile(filePath) {
@@ -141,13 +141,13 @@ async function testAddressLookupTables() {
     const addressesToAdd = [
       // Endereços do programa e tokens
       new web3.PublicKey(
-        "6xjmdQP5BcWskUmjGkqFU72dz9hp81SRvfrEmwZzieik"
+        "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy"
       ), // MATRIX_PROGRAM_ID
       new web3.PublicKey(
-        "FXAN6cjSjAiiGJf3fXK9T7kuLwmuFGN8x5o3bWjQhLSN"
+        "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"
       ), // TOKEN_MINT
       new web3.PublicKey(
-        "34GuqWF4vAZ5bNxrD9bZpUnhoNWJb3nBqiBo987uYySs"
+        "CSrEoisxJfho5DS76h3orCHmU2Fg9uTMP2DsoHobEwj1"
       ), // STATE_ADDRESS
 
       // Endereços da Pool Meteora

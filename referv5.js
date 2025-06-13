@@ -15,7 +15,6 @@ const {
 const { AnchorProvider, Program, BN, Wallet, utils } = require('@coral-xyz/anchor');
 const fs = require('fs');
 const path = require('path');
-
 // Get command line parameters (required: referrer and ALT)
 const args = process.argv.slice(2);
 const walletPath = args[0] || './carteiras/carteira1.json';

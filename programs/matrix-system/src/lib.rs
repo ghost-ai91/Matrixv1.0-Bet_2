@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount, Mint};
+use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
@@ -38,9 +38,6 @@ const DEFAULT_SOL_PRICE: i128 = 100_00000000;
 
 // Maximum number of upline accounts that can be processed in a single transaction
 const MAX_UPLINE_DEPTH: usize = 6;
-
-// Number of Vault A accounts in the remaining_accounts (including pool)
-const VAULT_A_ACCOUNTS_COUNT: usize = 5;
 
 // NOVA CONSTANTE: Tabela de distribuição de 36 semanas
 const WEEKLY_DISTRIBUTIONS: [u64; 36] = [
@@ -664,11 +661,6 @@ impl std::fmt::Display for Decimal {
 
 // ===== FUNÇÕES AUXILIARES =====
 
-// Helper function to force memory cleanup
-fn force_memory_cleanup() {
-    let _dummy = Vec::<u8>::new();
-}
-
 // NOVA: Calcular semana atual baseada no timestamp de início
 fn calculate_current_week(start_timestamp: i64) -> Result<u8> {
     let clock = Clock::get()?;
@@ -1030,21 +1022,6 @@ fn verify_ata_strict<'info>(
     Ok(())
 }
 
-// Verify pool and vault A addresses
-fn verify_pool_and_vault_a_addresses<'info>(
-    pool: &Pubkey,
-    a_vault: &Pubkey,
-    a_vault_lp: &Pubkey,
-    a_vault_lp_mint: &Pubkey,
-) -> Result<()> {
-    verify_address_strict(pool, &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
-    verify_address_strict(a_vault, &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(a_vault_lp, &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultALpAddress)?;
-    verify_address_strict(a_vault_lp_mint, &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultALpMintAddress)?;
-    
-    Ok(())
-}
-
 // Function to verify all fixed addresses at once
 fn verify_all_fixed_addresses<'info>(
     pool: &Pubkey,
@@ -1066,49 +1043,10 @@ fn verify_all_fixed_addresses<'info>(
     Ok(())
 }
 
-// Function to verify Chainlink addresses
-fn verify_chainlink_addresses<'info>(
-    chainlink_program: &Pubkey,
-    chainlink_feed: &Pubkey,
-) -> Result<()> {
-    verify_address_strict(chainlink_program, &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
-    verify_address_strict(chainlink_feed, &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
-    
-    Ok(())
-}
-
 // Function to verify if an account is a valid wallet (system account)
 fn verify_wallet_is_system_account<'info>(wallet: &AccountInfo<'info>) -> Result<()> {
     if wallet.owner != &solana_program::system_program::ID {
         return Err(error!(ErrorCode::PaymentWalletInvalid));
-    }
-    
-    Ok(())
-}
-
-// Function to verify if an account is a valid ATA
-fn verify_token_account<'info>(
-    token_account: &AccountInfo<'info>,
-    wallet: &Pubkey,
-    token_mint: &Pubkey
-) -> Result<()> {
-    if token_account.owner != &spl_token::id() {
-        return Err(error!(ErrorCode::TokenAccountInvalid));
-    }
-    
-    let token_data = match TokenAccount::try_deserialize(&mut &token_account.data.borrow()[..]) {
-        Ok(data) => data,
-        Err(_) => {
-            return Err(error!(ErrorCode::TokenAccountInvalid));
-        }
-    };
-    
-    if token_data.owner != *wallet {
-        return Err(error!(ErrorCode::TokenAccountInvalid));
-    }
-    
-    if token_data.mint != *token_mint {
-        return Err(error!(ErrorCode::TokenAccountInvalid));
     }
     
     Ok(())
@@ -1262,7 +1200,7 @@ pub struct Initialize<'info> {
 
 // Accounts for registration without referrer with deposit
 #[derive(Accounts)]
-#[instruction(deposit_amount: u64)]
+#[instruction(_deposit_amount: u64)]
 pub struct RegisterWithoutReferrerDeposit<'info> {
     #[account(mut)]
     pub state: Account<'info, ProgramState>,
@@ -1344,6 +1282,7 @@ pub struct ClaimAirdrop<'info> {
     #[account(mut)]
     pub program_token_vault: Account<'info, TokenAccount>,
     
+    /// CHECK: PDA authority for token vault operations - derived from seeds
     #[account(
         seeds = [b"token_vault_authority"],
         bump
@@ -1388,7 +1327,7 @@ pub struct RegisterWithSolDeposit<'info> {
     )]
     pub temp_donut_vault: Account<'info, TokenAccount>,
     
-    // NOVO: Authority da conta temporária
+    /// CHECK: PDA authority for temporary DONUT vault operations - derived from seeds
     #[account(
         seeds = [b"temp_donut_authority"],
         bump
@@ -1445,14 +1384,14 @@ pub struct RegisterWithSolDeposit<'info> {
     pub referrer_token_account: UncheckedAccount<'info>,
 
     // Authorities
-    /// CHECK: Mint authority PDA
+    /// CHECK: Mint authority PDA - derived from seeds
     #[account(
         seeds = [b"token_mint_authority"],
         bump
     )]
     pub token_mint_authority: UncheckedAccount<'info>,
 
-    /// CHECK: Token vault authority
+    /// CHECK: PDA authority for token vault operations - derived from seeds
     #[account(
         seeds = [b"token_vault_authority"],
         bump
@@ -1511,7 +1450,7 @@ pub mod referral_system {
     }
 
     // Register without referrer (mantida com adaptações menores)
-    pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerDeposit>, deposit_amount: u64) -> Result<()> {
+    pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerDeposit>, _deposit_amount: u64) -> Result<()> {
         // PROTEÇÃO REENTRANCY
         if ctx.accounts.state.is_locked {
             return Err(error!(ErrorCode::ReentrancyLock));

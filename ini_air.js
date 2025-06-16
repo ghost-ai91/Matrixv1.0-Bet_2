@@ -23,7 +23,7 @@ const idl = require("./target/idl/referral_system.json")
 
 // Configurações principais - AIRDROP VERSION
 const PROGRAM_ID = new PublicKey(
-  "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy"
+  "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin"
 )
 const TOKEN_MINT = new PublicKey(
   "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"
@@ -38,12 +38,12 @@ const SYSVAR_RENT_PUBKEY = new PublicKey(
   "SysvarRent111111111111111111111111111111111"
 )
 const MULTISIG_TREASURY = new PublicKey(
-  "4pNBWTT91WsQAyCgeGwswo288dd7NhwrwTqosJfKBB8s"
+  "QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv"
 )
 
 // VERIFIED ADDRESSES - AIRDROP VERSION
 const PROGRAM_TOKEN_VAULT = new PublicKey(
-  "6vcd7cv4tsqCmL1wFKe6H3ThCEgrpwfYFSiNyEWRFAp9"
+  "G5xqCMzjsf1YHTeeybY3ccRrtkoSqhAyusBTFVfFSvDR"
 )
 
 // Função para carregar uma carteira a partir de um arquivo

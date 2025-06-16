@@ -7,7 +7,7 @@ const fs = require('fs');
 
 // ALTERE ESTES VALORES
 const KEYPAIR_PATH = './target/deploy/matrix_system-keypair.json';
-const TOKEN_MINT = 'CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz'; // ALTERE AQUI
+const TOKEN_MINT = 'G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin'; // ALTERE AQUI
 
 // Carregar Program ID
 const keypairData = JSON.parse(fs.readFileSync(KEYPAIR_PATH));

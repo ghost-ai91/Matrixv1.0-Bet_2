@@ -43,7 +43,7 @@ const MULTISIG_TREASURY = new PublicKey(
 
 // VERIFIED ADDRESSES - AIRDROP VERSION
 const PROGRAM_TOKEN_VAULT = new PublicKey(
-  "G5xqCMzjsf1YHTeeybY3ccRrtkoSqhAyusBTFVfFSvDR"
+  "BBJi5yNpb9oRi1ZA6SqVmQwZ8wbekuPcwUXZZNhrpCvh"
 )
 
 // Função para carregar uma carteira a partir de um arquivo

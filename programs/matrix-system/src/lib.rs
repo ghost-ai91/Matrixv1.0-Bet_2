@@ -124,7 +124,7 @@ pub mod verified_addresses {
 pub mod admin_addresses {
     use solana_program::pubkey::Pubkey;
 
-    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
+    pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("4pNBWTT91WsQAyCgeGwswo288dd7NhwrwTqosJfKBB8s");
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
 }
 

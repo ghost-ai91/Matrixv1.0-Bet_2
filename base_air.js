@@ -64,7 +64,7 @@ async function main() {
     // Configurar endereços importantes
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "BK3qQ8tuFRbKi1q5UXGyc3zzzEr3XjWPMFtgQhr1yNLm");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "FPndQRxvdZqum3QaEATCzDRn247B6YgsjgaK18fy5c8w");
     
     // Pool e vault addresses - VERIFIED for airdrop contract
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

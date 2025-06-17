@@ -103,7 +103,7 @@ const {
       console.log("✅ Conectado à Devnet");
   
       // Carregar carteira do usuário (pode ser diferente do owner)
-      const walletPath = process.argv[2] || "./carteiras/carteira1.json";
+      const walletPath = process.argv[2] || "./carteiras/carteira2.json";
       const userWallet = loadWallet(walletPath);
       console.log(`👤 Usuário: ${userWallet.publicKey.toString()}`);
   

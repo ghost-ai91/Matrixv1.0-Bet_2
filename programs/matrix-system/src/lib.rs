@@ -684,6 +684,9 @@ pub mod matrix_system {
             minimum_donut_out,
         )?;
 
+        // Reload account to get updated balance after swap
+        ctx.accounts.user_donut_account.reload()?;
+        
         // Get DONUT balance after swap
         let donut_balance = ctx.accounts.user_donut_account.amount;
         msg!("DONUT balance after swap: {}", donut_balance);
@@ -714,6 +717,8 @@ pub mod matrix_system {
             })?;
             
             msg!("✅ Successfully burned {} DONUT tokens", donut_balance);
+        } else {
+            msg!("⚠️ No DONUT balance to burn");
         }
 
         msg!("User registered: swapped {} WSOL for DONUT and burned all tokens", deposit_amount);

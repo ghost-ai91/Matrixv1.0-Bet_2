@@ -8,7 +8,7 @@ use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
+declare_id!("CdKkHpRhewe3wJFpbouuQog5xTURycGgsyhyb7wjAVCv");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -25,26 +25,29 @@ security_txt! {
     acknowledgements: "We thank all security researchers who contributed to the security of our protocol."
 }
 
-// Minimum deposit amount in USD (10 dollars in base units - 8 decimals)
-const MINIMUM_USD_DEPOSIT: u64 = 10_00000000; // 10 USD with 8 decimals (Chainlink format)
+// ===== CONSTANTS =====
 
-// Maximum price feed staleness (24 hours in seconds)
+/// Minimum deposit amount in USD (10 dollars with 8 decimals - Chainlink format)
+const MINIMUM_USD_DEPOSIT: u64 = 10_00000000;
+
+/// Maximum price feed staleness (24 hours in seconds)
 const MAX_PRICE_FEED_AGE: i64 = 86400;
 
-// Default SOL price in case of stale feed ($100 USD per SOL)
-const DEFAULT_SOL_PRICE: i128 = 100_00000000; // $100 with 8 decimals
+/// Default SOL price in case of stale feed ($100 USD per SOL with 8 decimals)
+const DEFAULT_SOL_PRICE: i128 = 100_00000000;
 
-// Maximum number of upline accounts that can be processed in a single transaction
+/// Maximum number of upline accounts that can be processed in a single transaction
 const MAX_UPLINE_DEPTH: usize = 6;
 
-// Number of Vault A accounts in the remaining_accounts (including pool)
-const VAULT_A_ACCOUNTS_COUNT: usize = 5; // pool + a_vault + a_vault_lp + a_vault_lp_mint + a_token_vault
+/// Number of Vault A accounts in the remaining_accounts (including pool)
+const VAULT_A_ACCOUNTS_COUNT: usize = 5;
 
-// Constants for strict address verification
+// ===== VERIFIED ADDRESSES MODULE =====
+/// Module containing all verified protocol addresses
 pub mod verified_addresses {
     use solana_program::pubkey::Pubkey;
  
-    // Pool address
+    // Meteora Pool address
     pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
     // Vault A addresses (DONUT token vault)
@@ -53,7 +56,7 @@ pub mod verified_addresses {
     pub static A_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
     pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
     
-    // Meteora pool addresses
+    // Meteora pool addresses (Vault B - SOL)
     pub static B_VAULT_LP: Pubkey = solana_program::pubkey!("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
     pub static B_VAULT: Pubkey = solana_program::pubkey!("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
     pub static B_TOKEN_VAULT: Pubkey = solana_program::pubkey!("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
@@ -69,14 +72,15 @@ pub mod verified_addresses {
     
     // CRITICAL SECURITY ADDRESSES 
     pub static METEORA_VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6vcd7cv4tsqCmL1wFKe6H3ThCEgrpwfYFSiNyEWRFAp9"); // DERIVE THIS FIRST
+    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6vcd7cv4tsqCmL1wFKe6H3ThCEgrpwfYFSiNyEWRFAp9");
     
     // Meteora AMM addresses
     pub static METEORA_AMM_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
     pub static PROTOCOL_FEE_ACCOUNT: Pubkey = solana_program::pubkey!("FBSwbuckwK9cPU7zhCXL6HuQvWn8dAJBX46oRQonKQLa");
 }
 
-// Admin account addresses
+// ===== ADMIN ADDRESSES MODULE =====
+/// Module containing admin account addresses
 pub mod admin_addresses {
     use solana_program::pubkey::Pubkey;
 
@@ -86,12 +90,14 @@ pub mod admin_addresses {
 
 // ===== METEORA DYNAMIC VAULT STRUCTURES =====
 
+/// Vault bumps structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
 pub struct VaultBumps {
     pub vault_bump: u8,
     pub token_vault_bump: u8,
 }
 
+/// Locked profit tracker for vault calculations
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
 pub struct LockedProfitTracker {
     pub last_updated_locked_profit: u64,
@@ -99,6 +105,7 @@ pub struct LockedProfitTracker {
     pub locked_profit_degradation: u64,
 }
 
+/// Meteora Vault account structure
 #[account]
 #[derive(Debug)]
 pub struct Vault {
@@ -117,6 +124,7 @@ pub struct Vault {
 }
 
 impl Vault {
+    /// Calculate token amount based on LP share
     pub fn get_amount_by_share(
         &self,
         current_time: u64,
@@ -137,6 +145,7 @@ impl Vault {
         .ok()
     }
     
+    /// Get unlocked amount available in vault
     pub fn get_unlocked_amount(&self, current_time: u64) -> Option<u64> {
         self.total_amount.checked_sub(
             self.locked_profit_tracker
@@ -146,6 +155,7 @@ impl Vault {
 }
 
 impl LockedProfitTracker {
+    /// Calculate current locked profit amount
     pub fn calculate_locked_profit(&self, current_time: u64) -> Option<u64> {
         const LOCKED_PROFIT_DEGRADATION_DENOMINATOR: u128 = 1_000_000_000_000;
         
@@ -168,6 +178,7 @@ impl LockedProfitTracker {
 
 // ===== METEORA DYNAMIC AMM STRUCTURES =====
 
+/// Pool type enum
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
 pub enum PoolType {
     Permissioned,
@@ -180,6 +191,7 @@ impl Default for PoolType {
     }
 }
 
+/// Pool fee structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
 pub struct PoolFees {
     pub trade_fee_numerator: u64,
@@ -188,6 +200,7 @@ pub struct PoolFees {
     pub protocol_trade_fee_denominator: u64,
 }
 
+/// Partner info structure
 #[derive(Copy, Clone, Debug, AnchorSerialize, AnchorDeserialize, Default)]
 pub struct PartnerInfo {
     pub fee_numerator: u64,
@@ -196,6 +209,7 @@ pub struct PartnerInfo {
     pub pending_fee_b: u64,
 }
 
+/// Bootstrapping configuration
 #[derive(Copy, Clone, Debug, AnchorSerialize, AnchorDeserialize, Default)]
 pub struct Bootstrapping {
     pub activation_point: u64,
@@ -205,6 +219,7 @@ pub struct Bootstrapping {
     pub activation_type: u8,
 }
 
+/// Curve type for AMM calculations
 #[derive(Clone, Copy, Debug, AnchorDeserialize, AnchorSerialize)]
 pub enum CurveType {
     ConstantProduct,
@@ -216,6 +231,7 @@ pub enum CurveType {
     },
 }
 
+/// Token multiplier for stable curves
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, Copy, Eq, PartialEq)]
 pub struct TokenMultiplier {
     pub token_a_multiplier: u64,
@@ -223,6 +239,7 @@ pub struct TokenMultiplier {
     pub precision_factor: u8,
 }
 
+/// Depeg configuration
 #[derive(Clone, Copy, Debug, Default, AnchorSerialize, AnchorDeserialize)]
 pub struct Depeg {
     pub base_virtual_price: u64,
@@ -230,6 +247,7 @@ pub struct Depeg {
     pub depeg_type: DepegType,
 }
 
+/// Depeg type enum
 #[derive(Clone, Copy, Debug, Default, AnchorDeserialize, AnchorSerialize, PartialEq)]
 pub enum DepegType {
     #[default]
@@ -239,6 +257,7 @@ pub enum DepegType {
     SplStake,
 }
 
+/// Padding structure for account alignment
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
 pub struct Padding {
     pub padding_0: [u8; 6],
@@ -246,6 +265,7 @@ pub struct Padding {
     pub padding_2: [u64; 21],
 }
 
+/// Meteora Pool account structure
 #[account]
 #[derive(Debug)]
 pub struct Pool {
@@ -274,14 +294,20 @@ pub struct Pool {
 
 // ===== PROGRAM STRUCTURES =====
 
-// Program state structure
+/// Program state structure
 #[account]
 pub struct ProgramState {
+    /// Owner of the program
     pub owner: Pubkey,
+    /// Multisig treasury address
     pub multisig_treasury: Pubkey,
+    /// Next upline ID to be assigned
     pub next_upline_id: u32,
+    /// Next chain ID to be assigned
     pub next_chain_id: u32,
+    /// Last mint amount for rate limiting
     pub last_mint_amount: u64,
+    /// Reentrancy lock flag
     pub is_locked: bool,
 }
 
@@ -289,45 +315,60 @@ impl ProgramState {
     pub const SIZE: usize = 32 + 32 + 4 + 4 + 8 + 1;
 }
 
-// Structure to store complete information for each upline
+/// Structure to store complete information for each upline
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
 pub struct UplineEntry {
-    pub pda: Pubkey,       // PDA of the user account
-    pub wallet: Pubkey,    // Original user wallet
+    /// PDA of the user account
+    pub pda: Pubkey,
+    /// Original user wallet
+    pub wallet: Pubkey,
 }
 
-// Referral upline structure
+/// Referral upline structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct ReferralUpline {
+    /// Unique upline ID
     pub id: u32,
+    /// Depth in the referral tree
     pub depth: u8,
-    pub upline: Vec<UplineEntry>, // Stores UplineEntry with all information
+    /// List of upline entries
+    pub upline: Vec<UplineEntry>,
 }
 
-// Referral matrix structure
+/// Referral matrix structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct ReferralChain {
+    /// Chain ID
     pub id: u32,
+    /// Matrix slots (3 slots)
     pub slots: [Option<Pubkey>; 3],
+    /// Number of filled slots
     pub filled_slots: u8,
 }
 
-// User account structure
+/// User account structure
 #[account]
 #[derive(Default)]
 pub struct UserAccount {
+    /// Registration status
     pub is_registered: bool,
+    /// Referrer PDA (optional)
     pub referrer: Option<Pubkey>,
+    /// Owner wallet address
     pub owner_wallet: Pubkey,
+    /// Upline information
     pub upline: ReferralUpline,
+    /// Matrix chain information
     pub chain: ReferralChain,
+    /// Reserved SOL amount
     pub reserved_sol: u64,
+    /// Reserved token amount
     pub reserved_tokens: u64,
 }
 
 impl UserAccount {
     pub const SIZE: usize = 1 + // is_registered
-                           1 + 32 + // Option<Pubkey> (1 for is_some + 32 for Pubkey)
+                           1 + 32 + // Option<Pubkey>
                            32 + // owner_wallet
                            4 + 1 + 4 + (MAX_UPLINE_DEPTH * (32 + 32)) + // ReferralUpline
                            4 + (3 * (1 + 32)) + 1 + // ReferralChain
@@ -335,7 +376,9 @@ impl UserAccount {
                            8;  // reserved_tokens
 }
 
-// Error codes
+// ===== ERROR CODES =====
+
+/// Custom error codes for the program
 #[error_code]
 pub enum ErrorCode {
     #[msg("Invalid vault B address")]
@@ -465,16 +508,24 @@ pub enum ErrorCode {
     InvalidProtocolFeeAccount,
 }
 
-// Event structure for slot filling
+// ===== EVENTS =====
+
+/// Event emitted when a slot is filled
 #[event]
 pub struct SlotFilled {
+    /// Slot index (0-2)
     pub slot_idx: u8,
+    /// Chain ID
     pub chain_id: u32,
+    /// User who filled the slot
     pub user: Pubkey,
+    /// Owner of the slot
     pub owner: Pubkey,
 }
 
-// Decimal handling for price display
+// ===== HELPER STRUCTURES =====
+
+/// Decimal handling for price display
 #[derive(Default)]
 pub struct Decimal {
     pub value: i128,
@@ -503,12 +554,14 @@ impl std::fmt::Display for Decimal {
     }
 }
 
-// Helper function to force memory cleanup
+// ===== HELPER FUNCTIONS =====
+
+/// Force memory cleanup
 fn force_memory_cleanup() {
     let _dummy = Vec::<u8>::new();
 }
 
-// Function to get SOL/USD price from Chainlink feed
+/// Get SOL/USD price from Chainlink feed
 fn get_sol_usd_price<'info>(
     chainlink_feed: &AccountInfo<'info>,
     chainlink_program: &AccountInfo<'info>,
@@ -529,7 +582,7 @@ fn get_sol_usd_price<'info>(
     Ok((round.answer, decimals.into(), current_timestamp, round.timestamp.into()))
 }
 
-// Function to calculate minimum SOL deposit based on USD price
+/// Calculate minimum SOL deposit based on USD price
 fn calculate_minimum_sol_deposit<'info>(
     chainlink_feed: &AccountInfo<'info>, 
     chainlink_program: &AccountInfo<'info>
@@ -552,7 +605,7 @@ fn calculate_minimum_sol_deposit<'info>(
     Ok(minimum_lamports)
 }
 
-// Function to check and adjust the mint value based on history
+/// Check and adjust the mint value based on history (rate limiting)
 fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) -> Result<u64> {
     if program_state.last_mint_amount == 0 {
         msg!("First mint: establishing base value for limiter: {}", proposed_mint_value);
@@ -576,6 +629,7 @@ fn check_mint_limit(program_state: &mut ProgramState, proposed_mint_value: u64) 
     Ok(proposed_mint_value)
 }
 
+/// Calculate DONUT tokens amount based on pool state
 fn get_donut_tokens_amount<'info>(
     pool: &AccountInfo<'info>,
     a_vault: &AccountInfo<'info>,
@@ -592,6 +646,7 @@ fn get_donut_tokens_amount<'info>(
     
     let _current_time = Clock::get()?.unix_timestamp as u64;
     
+    // Check if pool is enabled
     {
         let pool_data = pool.try_borrow_data()?;
         let enabled_offset = 8 + 225;
@@ -607,6 +662,7 @@ fn get_donut_tokens_amount<'info>(
         }
     }
     
+    // Read vault A total amount
     let (vault_a_total, vault_a_enabled) = {
         let vault_data = a_vault.try_borrow_data()?;
         if vault_data.len() < 19 {
@@ -622,6 +678,7 @@ fn get_donut_tokens_amount<'info>(
         (total_amount, enabled)
     };
     
+    // Read vault B total amount
     let (vault_b_total, vault_b_enabled) = {
         let vault_data = b_vault.try_borrow_data()?;
         if vault_data.len() < 19 {
@@ -642,6 +699,7 @@ fn get_donut_tokens_amount<'info>(
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
+    // Read LP amounts
     let (a_vault_lp_amount, b_vault_lp_amount) = {
         let a_data = a_vault_lp.try_borrow_data()?;
         let b_data = b_vault_lp.try_borrow_data()?;
@@ -664,6 +722,7 @@ fn get_donut_tokens_amount<'info>(
         (a_amount, b_amount)
     };
     
+    // Read LP supplies
     let (a_vault_lp_supply, b_vault_lp_supply) = {
         let a_mint_data = a_vault_lp_mint.try_borrow_data()?;
         let b_mint_data = b_vault_lp_mint.try_borrow_data()?;
@@ -686,6 +745,7 @@ fn get_donut_tokens_amount<'info>(
         (a_supply, b_supply)
     };
     
+    // Calculate token amounts
     let token_a_amount = if a_vault_lp_supply == 0 {
         0
     } else {
@@ -741,6 +801,7 @@ fn get_donut_tokens_amount<'info>(
         return Err(error!(ErrorCode::PriceMeteoraReadFailed));
     }
     
+    // Calculate ratio
     let ratio = (token_a_amount as i128)
         .checked_mul(PRECISION_FACTOR)
         .and_then(|n| n.checked_div(token_b_amount as i128))
@@ -751,6 +812,7 @@ fn get_donut_tokens_amount<'info>(
     
     msg!("Token ratio (A/B): {}", ratio);
     
+    // Calculate DONUT tokens
     let donut_tokens = (sol_amount as i128)
         .checked_mul(ratio)
         .and_then(|n| n.checked_div(PRECISION_FACTOR))
@@ -770,7 +832,7 @@ fn get_donut_tokens_amount<'info>(
     Ok(if result == 0 { 1 } else { result })
 }
 
-// Function to strictly verify an address
+/// Verify address strictly
 fn verify_address_strict(provided: &Pubkey, expected: &Pubkey, error_code: ErrorCode) -> Result<()> {
     if provided != expected {
         msg!("Address verification failed: provided={}, expected={}", provided, expected);
@@ -779,7 +841,7 @@ fn verify_address_strict(provided: &Pubkey, expected: &Pubkey, error_code: Error
     Ok(())
 }
 
-// Verify pool and vault A addresses
+/// Verify pool and vault A addresses
 fn verify_pool_and_vault_a_addresses<'info>(
     pool: &Pubkey,
     a_vault: &Pubkey,
@@ -794,7 +856,7 @@ fn verify_pool_and_vault_a_addresses<'info>(
     Ok(())
 }
 
-// Function to strictly verify an ATA account
+/// Verify ATA account strictly
 fn verify_ata_strict<'info>(
     token_account: &AccountInfo<'info>,
     owner: &Pubkey,
@@ -822,7 +884,7 @@ fn verify_ata_strict<'info>(
     Ok(())
 }
 
-// Function to verify all fixed addresses at once
+/// Verify all fixed addresses at once
 fn verify_all_fixed_addresses<'info>(
     pool: &Pubkey,
     b_vault: &Pubkey,        
@@ -843,7 +905,7 @@ fn verify_all_fixed_addresses<'info>(
     Ok(())
 }
 
-// Function to verify Chainlink addresses
+/// Verify Chainlink addresses
 fn verify_chainlink_addresses<'info>(
     chainlink_program: &Pubkey,
     chainlink_feed: &Pubkey,
@@ -854,6 +916,7 @@ fn verify_chainlink_addresses<'info>(
     Ok(())
 }
 
+/// Validate all remaining accounts
 fn validate_all_remaining_accounts<'info>(
     remaining_accounts: &[AccountInfo<'info>],
     expected_base_count: usize,
@@ -862,10 +925,12 @@ fn validate_all_remaining_accounts<'info>(
         return Err(error!(ErrorCode::MissingVaultAAccounts));
     }
     
+    // Verify pool
     let pool = &remaining_accounts[0];
     verify_address_strict(&pool.key(), &verified_addresses::POOL_ADDRESS, 
                          ErrorCode::InvalidPoolAddress)?;
     
+    // Verify vault A accounts
     let a_vault = &remaining_accounts[1];
     let a_vault_lp = &remaining_accounts[2];
     let a_vault_lp_mint = &remaining_accounts[3];
@@ -878,6 +943,7 @@ fn validate_all_remaining_accounts<'info>(
     verify_address_strict(&a_vault_lp_mint.key(), &verified_addresses::A_VAULT_LP_MINT, 
                          ErrorCode::InvalidVaultALpMintAddress)?;
     
+    // Verify Chainlink accounts
     let chainlink_feed = &remaining_accounts[5];
     let chainlink_program = &remaining_accounts[6];
     
@@ -886,6 +952,7 @@ fn validate_all_remaining_accounts<'info>(
     verify_address_strict(&chainlink_feed.key(), &verified_addresses::SOL_USD_FEED, 
                          ErrorCode::InvalidPriceFeed)?;
     
+    // Validate upline accounts if present
     if remaining_accounts.len() > expected_base_count {
         let upline_accounts = &remaining_accounts[expected_base_count..];
         if upline_accounts.len() % 3 != 0 {
@@ -912,6 +979,7 @@ fn validate_all_remaining_accounts<'info>(
     Ok(())
 }
 
+/// Validate upline accounts
 fn validate_upline_accounts<'info>(
     referrer: &Account<'_, UserAccount>,
     upline_accounts: &[AccountInfo<'info>],
@@ -987,7 +1055,7 @@ fn validate_upline_accounts<'info>(
     Ok(())
 }
 
-// Verify if an account is a valid wallet (system account)
+/// Verify if an account is a valid wallet (system account)
 fn verify_wallet_is_system_account<'info>(wallet: &AccountInfo<'info>) -> Result<()> {
     if wallet.owner != &solana_program::system_program::ID {
         return Err(error!(ErrorCode::PaymentWalletInvalid));
@@ -996,7 +1064,7 @@ fn verify_wallet_is_system_account<'info>(wallet: &AccountInfo<'info>) -> Result
     Ok(())
 }
 
-// Verify if an account is a valid ATA
+/// Verify if an account is a valid token account
 fn verify_token_account<'info>(
     token_account: &AccountInfo<'info>,
     wallet: &Pubkey,
@@ -1024,7 +1092,7 @@ fn verify_token_account<'info>(
     Ok(())
 }
 
-// CORREÇÃO: Função para gerenciar WSOL de forma segura
+/// Manage WSOL operations (wrap/unwrap)
 fn manage_wsol_operation<'info>(
     user_wallet: &AccountInfo<'info>,
     user_wsol_account: &AccountInfo<'info>,
@@ -1035,7 +1103,7 @@ fn manage_wsol_operation<'info>(
     match operation {
         "wrap" => {
             if let Some(transfer_amount) = amount {
-                // Transfer SOL para WSOL
+                // Transfer SOL to WSOL account
                 let transfer_ix = solana_program::system_instruction::transfer(
                     &user_wallet.key(),
                     &user_wsol_account.key(),
@@ -1050,7 +1118,7 @@ fn manage_wsol_operation<'info>(
                     error!(ErrorCode::WrapSolFailed)
                 })?;
                 
-                // Sync native
+                // Sync native balance
                 let sync_native_ix = spl_token::instruction::sync_native(
                     &token_program.key(),
                     &user_wsol_account.key(),
@@ -1069,7 +1137,7 @@ fn manage_wsol_operation<'info>(
         },
         
         "unwrap" => {
-            // Fechar conta WSOL para recuperar SOL
+            // Close WSOL account to recover SOL
             let close_ix = spl_token::instruction::close_account(
                 &token_program.key(),
                 &user_wsol_account.key(),
@@ -1101,7 +1169,7 @@ fn manage_wsol_operation<'info>(
     Ok(())
 }
 
-// NEW: Function to process swap from WSOL to DONUT
+/// Process swap from WSOL to DONUT tokens
 fn process_swap_wsol_to_donut<'info>(
     pool: &AccountInfo<'info>,
     user: &AccountInfo<'info>,
@@ -1188,7 +1256,7 @@ fn process_swap_wsol_to_donut<'info>(
     Ok(())
 }
 
-// NEW: Calculate expected swap output with slippage
+/// Calculate expected swap output with slippage
 fn calculate_swap_amount_out<'info>(
     pool: &AccountInfo<'info>,
     a_vault: &AccountInfo<'info>,
@@ -1220,7 +1288,7 @@ fn calculate_swap_amount_out<'info>(
     Ok(minimum_out)
 }
 
-// Function to reserve SOL for the referrer
+/// Reserve SOL for referrer
 fn process_reserve_sol<'info>(
     from: &AccountInfo<'info>,
     to: &AccountInfo<'info>,
@@ -1244,7 +1312,7 @@ fn process_reserve_sol<'info>(
     Ok(())
 }
 
-// Function process_pay_referrer with explicit lifetimes
+/// Pay referrer with SOL
 fn process_pay_referrer<'info>(
     from: &AccountInfo<'info>,
     to: &AccountInfo<'info>,
@@ -1276,7 +1344,7 @@ fn process_pay_referrer<'info>(
     Ok(())
 }
 
-// Function to mint tokens for the program vault
+/// Mint tokens to program vault
 pub fn process_mint_tokens<'info>(
     token_mint: &AccountInfo<'info>,
     program_token_vault: &AccountInfo<'info>,
@@ -1313,7 +1381,7 @@ pub fn process_mint_tokens<'info>(
     Ok(())
 }
 
-// Function to transfer tokens from vault to user
+/// Transfer tokens from vault to user
 pub fn process_transfer_tokens<'info>(
     program_token_vault: &AccountInfo<'info>,
     user_token_account: &AccountInfo<'info>,
@@ -1387,7 +1455,9 @@ fn process_referrer_chain<'info>(
    Ok((false, referrer.key()))
 }
 
-// Accounts for initialize instruction
+// ===== ACCOUNT STRUCTURES - OPTIMIZED TO PREVENT STACK OVERFLOW =====
+
+/// Initialize instruction accounts
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(
@@ -1401,7 +1471,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// Accounts for registration without referrer with deposit
+/// Register without referrer (base user) with deposit
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithoutReferrerDeposit<'info> {
@@ -1427,7 +1497,7 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     #[account(mut)]
     pub user_source_token: UncheckedAccount<'info>,
     
-    // Account to receive DONUT tokens
+    /// Account to receive DONUT tokens
     #[account(
         init_if_needed,
         payer = user_wallet,
@@ -1436,16 +1506,15 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     )]
     pub user_donut_account: Account<'info, TokenAccount>,
     
-    // WSOL mint
+    /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
     pub wsol_mint: AccountInfo<'info>,
 
-// Deposit Accounts (same logic as Slot 1)
+    /// Deposit Accounts
     /// CHECK: Pool account (PDA)
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
 
-    // Existing accounts for vault B (SOL)
     /// CHECK: Vault account for token B (SOL)
     #[account(mut)]
     pub b_vault: UncheckedAccount<'info>,
@@ -1465,158 +1534,131 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     /// CHECK: Vault program
     pub vault_program: UncheckedAccount<'info>,
 
-    // TOKEN MINT - Added for base user
-    /// CHECK: Token mint to create the UplineEntry structure
+    /// CHECK: Token mint
     pub token_mint: UncheckedAccount<'info>,
     
-    // Protocol fee account
     /// CHECK: Protocol fee account for Meteora
     pub protocol_token_fee: UncheckedAccount<'info>,
     
-    // AMM Program
     /// CHECK: Meteora Dynamic AMM program
     pub amm_program: UncheckedAccount<'info>,
 
-    // Required programs
+    /// Required programs
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
 }
 
-// Structure for registration with SOL in a single transaction - OPTIMIZED WITH BOX
+/// OPTIMIZED: Register with SOL deposit - using AccountInfo to reduce stack usage
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithSolDeposit<'info> {
+    /// Program state
+    /// CHECK: Validated in instruction
     #[account(mut)]
-    pub state: Box<Account<'info, ProgramState>>, // BOX
+    pub state: AccountInfo<'info>,
 
     #[account(mut)]
     pub user_wallet: Signer<'info>,
 
-    // Reference accounts
+    /// Referrer accounts
+    /// CHECK: Validated in instruction
     #[account(mut)]
-    pub referrer: Box<Account<'info, UserAccount>>, // BOX
+    pub referrer: AccountInfo<'info>,
     
+    /// CHECK: Validated in instruction
     #[account(mut)]
-    pub referrer_wallet: SystemAccount<'info>,
+    pub referrer_wallet: AccountInfo<'info>,
 
-    // User account - BOXED to reduce stack size
-    #[account(
-        init,
-        payer = user_wallet,
-        space = 8 + UserAccount::SIZE,
-        seeds = [b"user_account", user_wallet.key().as_ref()],
-        bump
-    )]
-    pub user: Box<Account<'info, UserAccount>>, // BOX
+    /// User account
+    /// CHECK: Validated in instruction with proper PDA derivation
+    #[account(mut)]
+    pub user: AccountInfo<'info>,
 
-    // New WSOL ATA account - BOXED
-    #[account(
-        init,
-        payer = user_wallet,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_wsol_account: Box<Account<'info, TokenAccount>>, // BOX
+    /// WSOL account for user
+    /// CHECK: Validated in instruction
+    #[account(mut)]
+    pub user_wsol_account: AccountInfo<'info>,
     
-    // Account to receive DONUT tokens - BOXED
-    #[account(
-        init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_donut_account: Box<Account<'info, TokenAccount>>, // BOX
+    /// Account to receive DONUT tokens
+    /// CHECK: Validated in instruction
+    #[account(mut)]
+    pub user_donut_account: AccountInfo<'info>,
     
-    // WSOL mint
+    /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
     pub wsol_mint: AccountInfo<'info>,
 
-    // Deposit Accounts (Slot 1 and 3)
+    /// Pool accounts
     /// CHECK: Pool account (PDA)
     #[account(mut)]
-    pub pool: UncheckedAccount<'info>,
+    pub pool: AccountInfo<'info>,
 
-    // Existing accounts for vault B (SOL)
     /// CHECK: Vault account for token B (SOL)
     #[account(mut)]
-    pub b_vault: UncheckedAccount<'info>,
+    pub b_vault: AccountInfo<'info>,
 
     /// CHECK: Token vault account for token B (SOL)
     #[account(mut)]
-    pub b_token_vault: UncheckedAccount<'info>,
+    pub b_token_vault: AccountInfo<'info>,
 
     /// CHECK: LP token mint for vault B
     #[account(mut)]
-    pub b_vault_lp_mint: UncheckedAccount<'info>,
+    pub b_vault_lp_mint: AccountInfo<'info>,
 
     /// CHECK: LP token account for vault B
     #[account(mut)]
-    pub b_vault_lp: UncheckedAccount<'info>,
+    pub b_vault_lp: AccountInfo<'info>,
 
     /// CHECK: Vault program - CRITICAL: Must be validated against hardcoded address
-    pub vault_program: UncheckedAccount<'info>,
+    pub vault_program: AccountInfo<'info>,
 
-    // Accounts for SOL reserve (Slot 2)
-    #[account(
-        mut,
-        seeds = [b"program_sol_vault"],
-        bump
-    )]
-    pub program_sol_vault: SystemAccount<'info>,
+    /// Program vault accounts
+    /// CHECK: Program SOL vault
+    #[account(mut)]
+    pub program_sol_vault: AccountInfo<'info>,
     
-    // ACCOUNTS FOR TOKENS (Slot 2 and 3)
     /// CHECK: Token mint for minting new tokens
     #[account(mut)]
-    pub token_mint: UncheckedAccount<'info>,
+    pub token_mint: AccountInfo<'info>,
     
     /// CHECK: Program token vault - CRITICAL: Must be validated against hardcoded address  
     #[account(mut)]
-    pub program_token_vault: UncheckedAccount<'info>,
+    pub program_token_vault: AccountInfo<'info>,
     
     /// CHECK: Referrer's ATA to receive tokens
     #[account(mut)]
-    pub referrer_token_account: UncheckedAccount<'info>,
+    pub referrer_token_account: AccountInfo<'info>,
     
-    // Authority to mint tokens (program PDA)
     /// CHECK: Mint authority PDA
-    #[account(
-        seeds = [b"token_mint_authority"],
-        bump
-    )]
-    pub token_mint_authority: UncheckedAccount<'info>,
+    pub token_mint_authority: AccountInfo<'info>,
     
-    // Vault authority for token transfers
     /// CHECK: Token vault authority
-    #[account(
-        seeds = [b"token_vault_authority"],
-        bump
-    )]
-    pub vault_authority: UncheckedAccount<'info>,
+    pub vault_authority: AccountInfo<'info>,
     
-    // Protocol fee account
     /// CHECK: Protocol fee account for Meteora
-    pub protocol_token_fee: UncheckedAccount<'info>,
+    pub protocol_token_fee: AccountInfo<'info>,
     
-    // AMM Program
     /// CHECK: Meteora Dynamic AMM program
-    pub amm_program: UncheckedAccount<'info>,
+    pub amm_program: AccountInfo<'info>,
 
-    // Required programs
+    /// Required programs
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
 }
+
+// ===== PROGRAM MODULE =====
 
 #[program]
 pub mod referral_system {
     use super::*;
 
-    // Initialize program state
+    /// Initialize program state
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-
+        // Verify authorized initializer
         if ctx.accounts.owner.key() != admin_addresses::AUTHORIZED_INITIALIZER {
             return Err(error!(ErrorCode::NotAuthorized));
         }
@@ -1632,12 +1674,12 @@ pub mod referral_system {
         Ok(())
     }
     
-    // Register without referrer
+    /// Register without referrer (base user registration)
     pub fn register_without_referrer<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, RegisterWithoutReferrerDeposit<'info>>, 
         deposit_amount: u64
     ) -> Result<()> {
-        // PROTEÇÃO REENTRANCY
+        // REENTRANCY PROTECTION
         if ctx.accounts.state.is_locked {
             return Err(error!(ErrorCode::ReentrancyLock));
         }
@@ -1806,24 +1848,33 @@ pub mod referral_system {
 
         msg!("Base user registered: swapped {} WSOL for DONUT", deposit_amount);
 
-        // PROTEÇÃO REENTRANCY - FIM
+        // REENTRANCY PROTECTION - UNLOCK AT END
         ctx.accounts.state.is_locked = false;
         Ok(())
     }
 
-    // CORREÇÃO COMPLETA: register_with_sol_deposit COM SWAP
+    /// Register with referrer and SOL deposit (optimized version)
     pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDeposit<'info>>, 
         deposit_amount: u64
     ) -> Result<()> {
-        // PROTEÇÃO REENTRANCY
-        if ctx.accounts.state.is_locked {
+        // Manual deserialization of state account
+        let state_data = ctx.accounts.state.try_borrow_data()?;
+        if state_data.len() < 8 + ProgramState::SIZE {
+            return Err(ProgramError::InvalidAccountData.into());
+        }
+        let mut state_bytes = &state_data[8..];
+        let mut state: ProgramState = ProgramState::deserialize(&mut state_bytes)?;
+        drop(state_data);
+        
+        // REENTRANCY PROTECTION
+        if state.is_locked {
             msg!("Transaction rejected: reentrancy protection active");
             return Err(error!(ErrorCode::ReentrancyLock));
         }
         
-        // SETAR LOCK ANTES DE QUALQUER OPERAÇÃO EXTERNA
-        ctx.accounts.state.is_locked = true;
+        // SET LOCK BEFORE ANY EXTERNAL OPERATION
+        state.is_locked = true;
         
         // CRITICAL SECURITY VALIDATIONS
         
@@ -1833,7 +1884,11 @@ pub mod referral_system {
             &verified_addresses::METEORA_VAULT_PROGRAM, 
             ErrorCode::InvalidVaultProgram
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            // Write state back
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
@@ -1843,7 +1898,10 @@ pub mod referral_system {
             &verified_addresses::PROGRAM_TOKEN_VAULT, 
             ErrorCode::InvalidProgramTokenVault
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
@@ -1853,7 +1911,10 @@ pub mod referral_system {
             &verified_addresses::METEORA_AMM_PROGRAM,
             ErrorCode::InvalidAmmProgram
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
@@ -1863,40 +1924,122 @@ pub mod referral_system {
             &verified_addresses::PROTOCOL_FEE_ACCOUNT,
             ErrorCode::InvalidProtocolFeeAccount
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
-        // 5. Check if referrer is registered
-        if !ctx.accounts.referrer.is_registered {
-            ctx.accounts.state.is_locked = false;
+        // 5. Validate referrer account
+        if ctx.accounts.referrer.owner != &crate::ID {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(error!(ErrorCode::InvalidSlotOwner));
+        }
+        
+        // Deserialize referrer account
+        let referrer_data = ctx.accounts.referrer.try_borrow_data()?;
+        if referrer_data.len() < 8 + UserAccount::SIZE {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(ProgramError::InvalidAccountData.into());
+        }
+        let mut referrer_bytes = &referrer_data[8..];
+        let mut referrer: UserAccount = UserAccount::deserialize(&mut referrer_bytes)?;
+        drop(referrer_data);
+        
+        if !referrer.is_registered {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(error!(ErrorCode::ReferrerNotRegistered));
         }
 
-        // 6. DETERMINE ACTUAL SLOT FROM BLOCKCHAIN
-        let actual_slot_idx = ctx.accounts.referrer.chain.filled_slots as usize;
+        // 6. Validate user account PDA
+        let (expected_user, user_bump) = Pubkey::find_program_address(
+            &[b"user_account", ctx.accounts.user_wallet.key().as_ref()],
+            &crate::ID
+        );
+        if ctx.accounts.user.key() != expected_user {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(ProgramError::InvalidSeeds.into());
+        }
         
-        // 7. DETECT BASE USER
-        let is_base_user = ctx.accounts.referrer.referrer.is_none() && 
-                           ctx.accounts.referrer.upline.upline.is_empty();
+        // 7. Validate SOL vault PDA
+        let (expected_sol_vault, sol_vault_bump) = Pubkey::find_program_address(
+            &[b"program_sol_vault"],
+            &crate::ID
+        );
+        if ctx.accounts.program_sol_vault.key() != expected_sol_vault {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(ProgramError::InvalidSeeds.into());
+        }
+        
+        // 8. Validate mint authority PDA
+        let (expected_mint_authority, mint_authority_bump) = Pubkey::find_program_address(
+            &[b"token_mint_authority"],
+            &crate::ID
+        );
+        if ctx.accounts.token_mint_authority.key() != expected_mint_authority {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(ProgramError::InvalidSeeds.into());
+        }
+        
+        // 9. Validate vault authority PDA
+        let (expected_vault_authority, vault_authority_bump) = Pubkey::find_program_address(
+            &[b"token_vault_authority"],
+            &crate::ID
+        );
+        if ctx.accounts.vault_authority.key() != expected_vault_authority {
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
+            return Err(ProgramError::InvalidSeeds.into());
+        }
+
+        // DETERMINE ACTUAL SLOT FROM BLOCKCHAIN
+        let actual_slot_idx = referrer.chain.filled_slots as usize;
+        
+        // DETECT BASE USER
+        let is_base_user = referrer.referrer.is_none() && 
+                           referrer.upline.upline.is_empty();
         
         msg!("Security Check - Slot: {}, Base User: {}, Referrer has {} uplines", 
-             actual_slot_idx, is_base_user, ctx.accounts.referrer.upline.upline.len());
+             actual_slot_idx, is_base_user, referrer.upline.upline.len());
 
-        // VALIDAÇÃO CRÍTICA SLOT 3
+        // SLOT 3 VALIDATION
         if actual_slot_idx == 2 {
             if is_base_user {
                 msg!("SLOT 3 - Base user detected: deposit will be swapped for DONUT");
                 
                 if ctx.remaining_accounts.len() < VAULT_A_ACCOUNTS_COUNT + 2 {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(error!(ErrorCode::MissingVaultAAccounts));
                 }
             } else {
                 msg!("SLOT 3 - Normal user detected: validating ALL upline accounts");
                 
                 let base_accounts = VAULT_A_ACCOUNTS_COUNT + 2;
-                let referrer_uplines_count = ctx.accounts.referrer.upline.upline.len();
+                let referrer_uplines_count = referrer.upline.upline.len();
                 let required_upline_accounts = referrer_uplines_count * 3;
                 let total_required = base_accounts + required_upline_accounts;
                 
@@ -1914,13 +2057,26 @@ pub mod referral_system {
                         total_required,
                         ctx.remaining_accounts.len()
                     );
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(error!(ErrorCode::Slot3RequiresUplineAccounts));
                 }
                 
+                // Create a temporary Account wrapper for validation
+                let temp_referrer = Account::<UserAccount> {
+                    owner: crate::ID,
+                    inner: referrer.clone(),
+                    info: ctx.accounts.referrer.clone(),
+                };
+                
                 let upline_accounts = &ctx.remaining_accounts[base_accounts..];
-                if let Err(e) = validate_upline_accounts(&ctx.accounts.referrer, upline_accounts) {
-                    ctx.accounts.state.is_locked = false;
+                if let Err(e) = validate_upline_accounts(&temp_referrer, upline_accounts) {
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 
@@ -1928,18 +2084,24 @@ pub mod referral_system {
             }
         } else {
             if ctx.remaining_accounts.len() < VAULT_A_ACCOUNTS_COUNT + 2 {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(error!(ErrorCode::MissingVaultAAccounts));
             }
         }
 
-        // VALIDAR TODAS AS CONTAS RESTANTES
+        // VALIDATE ALL REMAINING ACCOUNTS
         if let Err(e) = validate_all_remaining_accounts(&ctx.remaining_accounts, VAULT_A_ACCOUNTS_COUNT + 2) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
 
-        // Extrair contas já validadas
+        // Extract validated accounts
         let pool = &ctx.remaining_accounts[0];
         let a_vault = &ctx.remaining_accounts[1];
         let a_vault_lp = &ctx.remaining_accounts[2];
@@ -1953,7 +2115,10 @@ pub mod referral_system {
             &a_vault_lp.key(),
             &a_vault_lp_mint.key()
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
 
@@ -1966,7 +2131,10 @@ pub mod referral_system {
             &chainlink_program.key(),
             &chainlink_feed.key(),
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
 
@@ -1980,7 +2148,10 @@ pub mod referral_system {
             &ctx.accounts.token_mint.key(),
             &ctx.accounts.wsol_mint.key(),
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
 
@@ -1991,7 +2162,10 @@ pub mod referral_system {
         ) {
             Ok(val) => val,
             Err(e) => {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
         };
@@ -1999,32 +2173,110 @@ pub mod referral_system {
         // Verify deposit amount meets minimum requirement
         if deposit_amount < minimum_deposit {
             msg!("Deposit amount: {}, minimum required: {}", deposit_amount, minimum_deposit);
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(error!(ErrorCode::InsufficientDeposit));
         }
 
         // Verify referrer's ATA account
         if let Err(e) = verify_ata_strict(
-            &ctx.accounts.referrer_token_account.to_account_info(),
+            &ctx.accounts.referrer_token_account,
             &ctx.accounts.referrer_wallet.key(),
             &ctx.accounts.token_mint.key()
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
-        // CORREÇÃO: GESTÃO WSOL SIMPLIFICADA E SEGURA
+        // Initialize user account (using CPI to create account)
+        let user_account_size = 8 + UserAccount::SIZE;
+        let rent = Rent::get()?;
+        let required_lamports = rent.minimum_balance(user_account_size);
+        
+        // Create user account
+        let create_account_ix = solana_program::system_instruction::create_account(
+            &ctx.accounts.user_wallet.key(),
+            &ctx.accounts.user.key(),
+            required_lamports,
+            user_account_size as u64,
+            &crate::ID,
+        );
+        
+        solana_program::program::invoke_signed(
+            &create_account_ix,
+            &[
+                ctx.accounts.user_wallet.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+            ],
+            &[&[
+                b"user_account",
+                ctx.accounts.user_wallet.key().as_ref(),
+                &[user_bump],
+            ]],
+        )?;
+        
+        // Initialize WSOL account
+        let create_wsol_ix = spl_associated_token_account::instruction::create_associated_token_account(
+            &ctx.accounts.user_wallet.key(),
+            &ctx.accounts.user_wallet.key(),
+            &ctx.accounts.wsol_mint.key(),
+            &spl_token::ID,
+        );
+        
+        solana_program::program::invoke(
+            &create_wsol_ix,
+            &[
+                ctx.accounts.user_wallet.to_account_info(),
+                ctx.accounts.user_wsol_account.to_account_info(),
+                ctx.accounts.user_wallet.to_account_info(),
+                ctx.accounts.wsol_mint.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
+        
+        // Initialize DONUT account if needed
+        if ctx.accounts.user_donut_account.owner == &System::id() {
+            let create_donut_ix = spl_associated_token_account::instruction::create_associated_token_account(
+                &ctx.accounts.user_wallet.key(),
+                &ctx.accounts.user_wallet.key(),
+                &ctx.accounts.token_mint.key(),
+                &spl_token::ID,
+            );
+            
+            solana_program::program::invoke(
+                &create_donut_ix,
+                &[
+                    ctx.accounts.user_wallet.to_account_info(),
+                    ctx.accounts.user_donut_account.to_account_info(),
+                    ctx.accounts.user_wallet.to_account_info(),
+                    ctx.accounts.token_mint.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                    ctx.accounts.token_program.to_account_info(),
+                ],
+            )?;
+        }
+        
+        // WSOL MANAGEMENT
         let mut deposit_processed = false;
         
-        // 1. WRAP SOL -> WSOL (apenas uma vez no início)
+        // 1. WRAP SOL -> WSOL (only once at the beginning)
         if let Err(e) = manage_wsol_operation(
             &ctx.accounts.user_wallet.to_account_info(),
-            &ctx.accounts.user_wsol_account.to_account_info(),
+            &ctx.accounts.user_wsol_account,
             &ctx.accounts.token_program,
             "wrap",
             Some(deposit_amount),
         ) {
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(e);
         }
         
@@ -2037,48 +2289,55 @@ pub mod referral_system {
         // 3. Create user's upline chain
         let mut new_upline = Vec::new();
         
-        if ctx.accounts.referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
+        if referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
             new_upline.try_reserve(MAX_UPLINE_DEPTH).ok();
-            let start_idx = ctx.accounts.referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
-            new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline[start_idx..]);
+            let start_idx = referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
+            new_upline.extend_from_slice(&referrer.upline.upline[start_idx..]);
         } else {
-            new_upline.try_reserve(ctx.accounts.referrer.upline.upline.len() + 1).ok();
-            new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline);
+            new_upline.try_reserve(referrer.upline.upline.len() + 1).ok();
+            new_upline.extend_from_slice(&referrer.upline.upline);
         }
         
         new_upline.push(referrer_entry);
         new_upline.shrink_to_fit();
 
         // 4. Setup user account
-        let state = &mut ctx.accounts.state;
         let upline_id = state.next_upline_id;
         let chain_id = state.next_chain_id;
 
         state.next_chain_id += 1;
 
-        let user = &mut ctx.accounts.user;
-        user.is_registered = true;
-        user.referrer = Some(ctx.accounts.referrer.key());
-        user.owner_wallet = ctx.accounts.user_wallet.key();
-        user.upline = ReferralUpline {
-            id: upline_id,
-            depth: ctx.accounts.referrer.upline.depth + 1,
-            upline: new_upline,
+        let user = UserAccount {
+            is_registered: true,
+            referrer: Some(ctx.accounts.referrer.key()),
+            owner_wallet: ctx.accounts.user_wallet.key(),
+            upline: ReferralUpline {
+                id: upline_id,
+                depth: referrer.upline.depth + 1,
+                upline: new_upline,
+            },
+            chain: ReferralChain {
+                id: chain_id,
+                slots: [None, None, None],
+                filled_slots: 0,
+            },
+            reserved_sol: 0,
+            reserved_tokens: 0,
         };
-        user.chain = ReferralChain {
-            id: chain_id,
-            slots: [None, None, None],
-            filled_slots: 0,
-        };
-        user.reserved_sol = 0;
-        user.reserved_tokens = 0;
+        
+        // Write user account data
+        let mut user_data = ctx.accounts.user.try_borrow_mut_data()?;
+        let discriminator = UserAccount::discriminator();
+        user_data[..8].copy_from_slice(&discriminator);
+        let mut user_bytes = &mut user_data[8..];
+        user.serialize(&mut user_bytes)?;
+        drop(user_data);
 
         // SLOT-BASED FINANCIAL LOGIC
         let slot_idx = actual_slot_idx;
 
         if slot_idx == 0 {
             // SLOT 1: Swap WSOL for DONUT
-            // Create local references to avoid lifetime issues
             let pool_info = pool.clone();
             let b_vault_info = ctx.accounts.b_vault.to_account_info();
             let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
@@ -2097,7 +2356,10 @@ pub mod referral_system {
             ) {
                 Ok(amount) => amount,
                 Err(e) => {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
             };
@@ -2105,8 +2367,8 @@ pub mod referral_system {
             if let Err(e) = process_swap_wsol_to_donut(
                 &pool_info,
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.user_donut_account.to_account_info(),
+                &ctx.accounts.user_wsol_account,
+                &ctx.accounts.user_donut_account,
                 a_vault,
                 &b_vault_info,
                 a_token_vault,
@@ -2115,14 +2377,17 @@ pub mod referral_system {
                 &b_vault_lp_mint_info,
                 a_vault_lp,
                 &b_vault_lp_info,
-                &ctx.accounts.protocol_token_fee.to_account_info(),
-                &ctx.accounts.vault_program.to_account_info(),
+                &ctx.accounts.protocol_token_fee,
+                &ctx.accounts.vault_program,
                 &ctx.accounts.token_program.to_account_info(),
-                &ctx.accounts.amm_program.to_account_info(),
+                &ctx.accounts.amm_program,
                 deposit_amount,
                 minimum_donut_out,
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
@@ -2130,54 +2395,66 @@ pub mod referral_system {
             msg!("SLOT 1: Swapped {} WSOL for DONUT", deposit_amount);
         } 
         else if slot_idx == 1 {
-            // SLOT 2: Reserve SOL (unwrap WSOL primeiro)
+            // SLOT 2: Reserve SOL (unwrap WSOL first)
             
-            // Unwrap WSOL para obter SOL de volta
+            // Unwrap WSOL to get SOL back
             if let Err(e) = manage_wsol_operation(
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
+                &ctx.accounts.user_wsol_account,
                 &ctx.accounts.token_program,
                 "unwrap",
                 None,
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
             // Reserve SOL for referrer
             if let Err(e) = process_reserve_sol(
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.program_sol_vault.to_account_info(),
+                &ctx.accounts.program_sol_vault,
                 deposit_amount
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
-            ctx.accounts.referrer.reserved_sol = deposit_amount;
+            referrer.reserved_sol = deposit_amount;
             
             // Calculate tokens based on pool value
             let token_amount = match get_donut_tokens_amount(
                 pool,
                 a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
+                &ctx.accounts.b_vault,
                 a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
+                &ctx.accounts.b_vault_lp,
                 a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &ctx.accounts.b_vault_lp_mint,
                 deposit_amount
             ) {
                 Ok(amount) => amount,
                 Err(e) => {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
             };
             
-            let adjusted_token_amount = match check_mint_limit(state, token_amount) {
+            let adjusted_token_amount = match check_mint_limit(&mut state, token_amount) {
                 Ok(amount) => amount,
                 Err(e) => {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
             };
@@ -2185,104 +2462,131 @@ pub mod referral_system {
             
             // Mint tokens to program vault
             if let Err(e) = process_mint_tokens(
-                &ctx.accounts.token_mint.to_account_info(),
-                &ctx.accounts.program_token_vault.to_account_info(),
-                &ctx.accounts.token_mint_authority.to_account_info(),
+                &ctx.accounts.token_mint,
+                &ctx.accounts.program_token_vault,
+                &ctx.accounts.token_mint_authority,
                 &ctx.accounts.token_program,
                 adjusted_token_amount,
                 &[&[
                     b"token_mint_authority".as_ref(),
-                    &[ctx.bumps.token_mint_authority]
+                    &[mint_authority_bump]
                 ]],
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
 
             force_memory_cleanup();
-            ctx.accounts.referrer.reserved_tokens = adjusted_token_amount;
+            referrer.reserved_tokens = adjusted_token_amount;
             deposit_processed = true;
             msg!("SLOT 2: Reserved {} SOL and minted {} tokens", deposit_amount, adjusted_token_amount);
         }
         else if slot_idx == 2 {
-            // SLOT 3: Pay referrer (unwrap WSOL primeiro)
+            // SLOT 3: Pay referrer (unwrap WSOL first)
             
-            // Unwrap WSOL para recuperar SOL
+            // Unwrap WSOL to recover SOL
             if let Err(e) = manage_wsol_operation(
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
+                &ctx.accounts.user_wsol_account,
                 &ctx.accounts.token_program,
                 "unwrap",
                 None,
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
             // Pay reserved SOL to referrer
-            if ctx.accounts.referrer.reserved_sol > 0 {
-                if let Err(e) = verify_wallet_is_system_account(&ctx.accounts.referrer_wallet.to_account_info()) {
-                    ctx.accounts.state.is_locked = false;
+            if referrer.reserved_sol > 0 {
+                if let Err(e) = verify_wallet_is_system_account(&ctx.accounts.referrer_wallet) {
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 
                 if let Err(e) = process_pay_referrer(
-                    &ctx.accounts.program_sol_vault.to_account_info(),
-                    &ctx.accounts.referrer_wallet.to_account_info(),
-                    ctx.accounts.referrer.reserved_sol,
+                    &ctx.accounts.program_sol_vault,
+                    &ctx.accounts.referrer_wallet,
+                    referrer.reserved_sol,
                     &[&[
                         b"program_sol_vault".as_ref(),
-                        &[ctx.bumps.program_sol_vault]
+                        &[sol_vault_bump]
                     ]],
                 ) {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 
-                ctx.accounts.referrer.reserved_sol = 0;
+                referrer.reserved_sol = 0;
             }
             
             // Transfer reserved tokens to referrer
             if let Err(e) = verify_token_account(
-                &ctx.accounts.referrer_token_account.to_account_info(),
+                &ctx.accounts.referrer_token_account,
                 &ctx.accounts.referrer_wallet.key(),
                 &ctx.accounts.token_mint.key()
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
-            if ctx.accounts.referrer.reserved_tokens > 0 {
+            if referrer.reserved_tokens > 0 {
                 if let Err(e) = process_transfer_tokens(
-                    &ctx.accounts.program_token_vault.to_account_info(),
-                    &ctx.accounts.referrer_token_account.to_account_info(),
-                    &ctx.accounts.vault_authority.to_account_info(),
+                    &ctx.accounts.program_token_vault,
+                    &ctx.accounts.referrer_token_account,
+                    &ctx.accounts.vault_authority,
                     &ctx.accounts.token_program,
-                    ctx.accounts.referrer.reserved_tokens,
+                    referrer.reserved_tokens,
                     &[&[
                         b"token_vault_authority".as_ref(),
-                        &[ctx.bumps.vault_authority]
+                        &[vault_authority_bump]
                     ]],
                 ) {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 force_memory_cleanup();
-                ctx.accounts.referrer.reserved_tokens = 0;
+                referrer.reserved_tokens = 0;
             }
             
             msg!("SLOT 3: Paid referrer, preparing recursion with {} deposit", deposit_amount);
         }
         
         // Process referrer's matrix
+        let temp_referrer = Account::<UserAccount> {
+            owner: crate::ID,
+            inner: referrer.clone(),
+            info: ctx.accounts.referrer.clone(),
+        };
+        
         let (chain_completed, upline_pubkey) = match process_referrer_chain(
             &ctx.accounts.user_wallet.key(),
-            &mut ctx.accounts.referrer,
+            &mut referrer,
             state.next_chain_id,
         ) {
             Ok(result) => result,
             Err(e) => {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
         };
@@ -2292,8 +2596,14 @@ pub mod referral_system {
         if chain_completed {
             state.next_chain_id += 1;
         }
+        
+        // Write updated referrer back
+        let mut referrer_data = ctx.accounts.referrer.try_borrow_mut_data()?;
+        let mut referrer_bytes = &mut referrer_data[8..];
+        referrer.serialize(&mut referrer_bytes)?;
+        drop(referrer_data);
 
-        // CORREÇÃO: RECURSION PROCESSING COM SWAP
+        // RECURSION PROCESSING
         if chain_completed && slot_idx == 2 {
             let mut current_user_pubkey = upline_pubkey;
             let current_deposit = deposit_amount;
@@ -2304,15 +2614,18 @@ pub mod referral_system {
                 // BASE USER: No recursion, swap WSOL for DONUT
                 msg!("Base user matrix completed: swapping {} WSOL for DONUT", current_deposit);
                 
-                // Wrap SOL para WSOL para swap
+                // Wrap SOL to WSOL for swap
                 if let Err(e) = manage_wsol_operation(
                     &ctx.accounts.user_wallet.to_account_info(),
-                    &ctx.accounts.user_wsol_account.to_account_info(),
+                    &ctx.accounts.user_wsol_account,
                     &ctx.accounts.token_program,
                     "wrap",
                     Some(current_deposit),
                 ) {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 
@@ -2336,7 +2649,10 @@ pub mod referral_system {
                 ) {
                     Ok(amount) => amount,
                     Err(e) => {
-                        ctx.accounts.state.is_locked = false;
+                        state.is_locked = false;
+                        let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                        let mut state_bytes = &mut state_data[8..];
+                        state.serialize(&mut state_bytes)?;
                         return Err(e);
                     }
                 };
@@ -2345,8 +2661,8 @@ pub mod referral_system {
                 if let Err(e) = process_swap_wsol_to_donut(
                     &pool_info,
                     &ctx.accounts.user_wallet.to_account_info(),
-                    &ctx.accounts.user_wsol_account.to_account_info(),
-                    &ctx.accounts.user_donut_account.to_account_info(),
+                    &ctx.accounts.user_wsol_account,
+                    &ctx.accounts.user_donut_account,
                     a_vault,
                     &b_vault_info,
                     a_token_vault,
@@ -2355,14 +2671,17 @@ pub mod referral_system {
                     &b_vault_lp_mint_info,
                     a_vault_lp,
                     &b_vault_lp_info,
-                    &ctx.accounts.protocol_token_fee.to_account_info(),
-                    &ctx.accounts.vault_program.to_account_info(),
+                    &ctx.accounts.protocol_token_fee,
+                    &ctx.accounts.vault_program,
                     &ctx.accounts.token_program.to_account_info(),
-                    &ctx.accounts.amm_program.to_account_info(),
+                    &ctx.accounts.amm_program,
                     current_deposit,
                     minimum_donut_out,
                 ) {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
                 
@@ -2375,7 +2694,10 @@ pub mod referral_system {
                 
                 if upline_accounts.len() % 3 != 0 {
                     msg!("ERROR: Upline accounts not in trios: {}", upline_accounts.len());
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(error!(ErrorCode::MissingUplineAccount));
                 }
                 
@@ -2400,12 +2722,18 @@ pub mod referral_system {
                         let upline_token = &upline_accounts[base_idx + 2];
                         
                         if upline_wallet.owner != &solana_program::system_program::ID {
-                            ctx.accounts.state.is_locked = false;
+                            state.is_locked = false;
+                            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                            let mut state_bytes = &mut state_data[8..];
+                            state.serialize(&mut state_bytes)?;
                             return Err(error!(ErrorCode::PaymentWalletInvalid));
                         }
                         
                         if !upline_info.owner.eq(&crate::ID) {
-                            ctx.accounts.state.is_locked = false;
+                            state.is_locked = false;
+                            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                            let mut state_bytes = &mut state_data[8..];
+                            state.serialize(&mut state_bytes)?;
                             return Err(error!(ErrorCode::InvalidSlotOwner));
                         }
 
@@ -2414,12 +2742,18 @@ pub mod referral_system {
                             let data = match upline_info.try_borrow_data() {
                                 Ok(data) => data,
                                 Err(_) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(ProgramError::InvalidAccountData.into());
                                 }
                             };
                             if data.len() <= 8 {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(ProgramError::InvalidAccountData.into());
                             }
 
@@ -2427,13 +2761,19 @@ pub mod referral_system {
                             upline_account_data = match UserAccount::deserialize(&mut account_slice) {
                                 Ok(data) => data,
                                 Err(_) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(ProgramError::InvalidAccountData.into());
                                 }
                             };
 
                             if !upline_account_data.is_registered {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(error!(ErrorCode::SlotNotRegistered));
                             }
                         }
@@ -2445,7 +2785,10 @@ pub mod referral_system {
                         
                         if upline_slot_idx == 2 {
                             if upline_token.owner != &spl_token::id() {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(error!(ErrorCode::TokenAccountInvalid));
                             }
                             
@@ -2454,7 +2797,10 @@ pub mod referral_system {
                                 &upline_wallet.key(),
                                 &ctx.accounts.token_mint.key()
                             ) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(e);
                             }
                         }
@@ -2475,15 +2821,18 @@ pub mod referral_system {
                             // FOUND SLOT 1: Swap WSOL for DONUT
                             msg!("Recursion: Found SLOT 1 - preparing swap");
                             
-                            // Wrap SOL para WSOL para swap
+                            // Wrap SOL to WSOL for swap
                             if let Err(e) = manage_wsol_operation(
                                 &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.user_wsol_account.to_account_info(),
+                                &ctx.accounts.user_wsol_account,
                                 &ctx.accounts.token_program,
                                 "wrap",
                                 Some(current_deposit),
                             ) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(e);
                             }
                             
@@ -2507,7 +2856,10 @@ pub mod referral_system {
                             ) {
                                 Ok(amount) => amount,
                                 Err(e) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(e);
                                 }
                             };
@@ -2516,8 +2868,8 @@ pub mod referral_system {
                             if let Err(e) = process_swap_wsol_to_donut(
                                 &pool_info,
                                 &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.user_wsol_account.to_account_info(),
-                                &ctx.accounts.user_donut_account.to_account_info(),
+                                &ctx.accounts.user_wsol_account,
+                                &ctx.accounts.user_donut_account,
                                 a_vault,
                                 &b_vault_info,
                                 a_token_vault,
@@ -2526,14 +2878,17 @@ pub mod referral_system {
                                 &b_vault_lp_mint_info,
                                 a_vault_lp,
                                 &b_vault_lp_info,
-                                &ctx.accounts.protocol_token_fee.to_account_info(),
-                                &ctx.accounts.vault_program.to_account_info(),
+                                &ctx.accounts.protocol_token_fee,
+                                &ctx.accounts.vault_program,
                                 &ctx.accounts.token_program.to_account_info(),
-                                &ctx.accounts.amm_program.to_account_info(),
+                                &ctx.accounts.amm_program,
                                 current_deposit,
                                 minimum_donut_out,
                             ) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(e);
                             }
                             
@@ -2546,10 +2901,13 @@ pub mod referral_system {
                             
                             if let Err(e) = process_reserve_sol(
                                 &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.program_sol_vault.to_account_info(),
+                                &ctx.accounts.program_sol_vault,
                                 current_deposit
                             ) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(e);
                             }
                             
@@ -2558,41 +2916,50 @@ pub mod referral_system {
                             let token_amount = match get_donut_tokens_amount(
                                 pool,
                                 a_vault,
-                                &ctx.accounts.b_vault.to_account_info(),
+                                &ctx.accounts.b_vault,
                                 a_vault_lp,
-                                &ctx.accounts.b_vault_lp.to_account_info(),
+                                &ctx.accounts.b_vault_lp,
                                 a_vault_lp_mint,
-                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                                &ctx.accounts.b_vault_lp_mint,
                                 current_deposit
                             ) {
                                 Ok(amount) => amount,
                                 Err(e) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(e);
                                 }
                             };
                             
-                            let adjusted_token_amount = match check_mint_limit(state, token_amount) {
+                            let adjusted_token_amount = match check_mint_limit(&mut state, token_amount) {
                                 Ok(amount) => amount,
                                 Err(e) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(e);
                                 }
                             };
                             force_memory_cleanup();
                             
                             if let Err(e) = process_mint_tokens(
-                                &ctx.accounts.token_mint.to_account_info(),
-                                &ctx.accounts.program_token_vault.to_account_info(),
-                                &ctx.accounts.token_mint_authority.to_account_info(),
+                                &ctx.accounts.token_mint,
+                                &ctx.accounts.program_token_vault,
+                                &ctx.accounts.token_mint_authority,
                                 &ctx.accounts.token_program,
                                 adjusted_token_amount,
                                 &[&[
                                     b"token_mint_authority".as_ref(),
-                                    &[ctx.bumps.token_mint_authority]
+                                    &[mint_authority_bump]
                                 ]],
                             ) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(e);
                             }
 
@@ -2608,7 +2975,10 @@ pub mod referral_system {
                                 let reserved_sol = upline_account_data.reserved_sol;
                                 
                                 if upline_wallet.owner != &solana_program::system_program::ID {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(error!(ErrorCode::PaymentWalletInvalid));
                                 }
                                 
@@ -2627,10 +2997,13 @@ pub mod referral_system {
                                     &accounts,
                                     &[&[
                                         b"program_sol_vault".as_ref(),
-                                        &[ctx.bumps.program_sol_vault]
+                                        &[sol_vault_bump]
                                     ]],
                                 ) {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(error!(ErrorCode::ReferrerPaymentFailed));
                                 }
                                 
@@ -2641,22 +3014,28 @@ pub mod referral_system {
                                 let reserved_tokens = upline_account_data.reserved_tokens;
                                 
                                 if upline_token.owner != &spl_token::id() {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(error!(ErrorCode::TokenAccountInvalid));
                                 }
                                 
                                 if let Err(e) = process_transfer_tokens(
-                                    &ctx.accounts.program_token_vault.to_account_info(),
+                                    &ctx.accounts.program_token_vault,
                                     upline_token,
-                                    &ctx.accounts.vault_authority.to_account_info(),
+                                    &ctx.accounts.vault_authority,
                                     &ctx.accounts.token_program,
                                     reserved_tokens,
                                     &[&[
                                         b"token_vault_authority".as_ref(),
-                                        &[ctx.bumps.vault_authority]
+                                        &[vault_authority_bump]
                                     ]],
                                 ) {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(e);
                                 }
                                 
@@ -2680,18 +3059,24 @@ pub mod referral_system {
                             current_user_pubkey = upline_key;
                         }
                         
-                        // Serializar as mudanças
+                        // Serialize the changes
                         {
                             let mut data = match upline_info.try_borrow_mut_data() {
                                 Ok(data) => data,
                                 Err(_) => {
-                                    ctx.accounts.state.is_locked = false;
+                                    state.is_locked = false;
+                                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                    let mut state_bytes = &mut state_data[8..];
+                                    state.serialize(&mut state_bytes)?;
                                     return Err(ProgramError::InvalidAccountData.into());
                                 }
                             };
                             let mut write_data = &mut data[8..];
                             if let Err(_) = upline_account_data.serialize(&mut write_data) {
-                                ctx.accounts.state.is_locked = false;
+                                state.is_locked = false;
+                                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                                let mut state_bytes = &mut state_data[8..];
+                                state.serialize(&mut state_bytes)?;
                                 return Err(ProgramError::InvalidAccountData.into());
                             }
                         }
@@ -2712,19 +3097,22 @@ pub mod referral_system {
                     }
                 }
 
-                // FALLBACK: Se a recursão processou todos os uplines sem encontrar slot 1 ou 2
+                // FALLBACK: If recursion processed all uplines without finding slot 1 or 2
                 if current_deposit > 0 && !deposit_processed {
                     msg!("Recursion fallback: No slot 1/2 found, swapping {} WSOL for DONUT", current_deposit);
                     
-                    // Wrap SOL para WSOL para swap
+                    // Wrap SOL to WSOL for swap
                     if let Err(e) = manage_wsol_operation(
                         &ctx.accounts.user_wallet.to_account_info(),
-                        &ctx.accounts.user_wsol_account.to_account_info(),
+                        &ctx.accounts.user_wsol_account,
                         &ctx.accounts.token_program,
                         "wrap",
                         Some(current_deposit),
                     ) {
-                        ctx.accounts.state.is_locked = false;
+                        state.is_locked = false;
+                        let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                        let mut state_bytes = &mut state_data[8..];
+                        state.serialize(&mut state_bytes)?;
                         return Err(e);
                     }
                     
@@ -2748,7 +3136,10 @@ pub mod referral_system {
                     ) {
                         Ok(amount) => amount,
                         Err(e) => {
-                            ctx.accounts.state.is_locked = false;
+                            state.is_locked = false;
+                            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                            let mut state_bytes = &mut state_data[8..];
+                            state.serialize(&mut state_bytes)?;
                             return Err(e);
                         }
                     };
@@ -2757,8 +3148,8 @@ pub mod referral_system {
                     if let Err(e) = process_swap_wsol_to_donut(
                         &pool_info,
                         &ctx.accounts.user_wallet.to_account_info(),
-                        &ctx.accounts.user_wsol_account.to_account_info(),
-                        &ctx.accounts.user_donut_account.to_account_info(),
+                        &ctx.accounts.user_wsol_account,
+                        &ctx.accounts.user_donut_account,
                         a_vault,
                         &b_vault_info,
                         a_token_vault,
@@ -2767,14 +3158,17 @@ pub mod referral_system {
                         &b_vault_lp_mint_info,
                         a_vault_lp,
                         &b_vault_lp_info,
-                        &ctx.accounts.protocol_token_fee.to_account_info(),
-                        &ctx.accounts.vault_program.to_account_info(),
+                        &ctx.accounts.protocol_token_fee,
+                        &ctx.accounts.vault_program,
                         &ctx.accounts.token_program.to_account_info(),
-                        &ctx.accounts.amm_program.to_account_info(),
+                        &ctx.accounts.amm_program,
                         current_deposit,
                         minimum_donut_out,
                     ) {
-                        ctx.accounts.state.is_locked = false;
+                        state.is_locked = false;
+                        let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                        let mut state_bytes = &mut state_data[8..];
+                        state.serialize(&mut state_bytes)?;
                         return Err(e);
                     }
                     
@@ -2787,12 +3181,20 @@ pub mod referral_system {
         // FINAL VALIDATION
         if !deposit_processed {
             msg!("CRITICAL ERROR: Deposit not processed - this should NEVER happen!");
-            ctx.accounts.state.is_locked = false;
+            state.is_locked = false;
+            let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+            let mut state_bytes = &mut state_data[8..];
+            state.serialize(&mut state_bytes)?;
             return Err(error!(ErrorCode::DepositNotProcessed));
         }
         
         // EMERGENCY FALLBACK: Handle any remaining WSOL balance
-        let final_wsol_balance = ctx.accounts.user_wsol_account.amount;
+        // Read WSOL balance
+        let wsol_data = ctx.accounts.user_wsol_account.try_borrow_data()?;
+        let wsol_account = TokenAccount::try_deserialize(&mut &wsol_data[..])?;
+        let final_wsol_balance = wsol_account.amount;
+        drop(wsol_data);
+        
         if final_wsol_balance > 0 {
             msg!("EMERGENCY: Found remaining WSOL balance: {}, forcing swap", final_wsol_balance);
             
@@ -2816,7 +3218,10 @@ pub mod referral_system {
             ) {
                 Ok(amount) => amount,
                 Err(e) => {
-                    ctx.accounts.state.is_locked = false;
+                    state.is_locked = false;
+                    let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                    let mut state_bytes = &mut state_data[8..];
+                    state.serialize(&mut state_bytes)?;
                     return Err(e);
                 }
             };
@@ -2825,8 +3230,8 @@ pub mod referral_system {
             if let Err(e) = process_swap_wsol_to_donut(
                 &pool_info,
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.user_donut_account.to_account_info(),
+                &ctx.accounts.user_wsol_account,
+                &ctx.accounts.user_donut_account,
                 a_vault,
                 &b_vault_info,
                 a_token_vault,
@@ -2835,14 +3240,17 @@ pub mod referral_system {
                 &b_vault_lp_mint_info,
                 a_vault_lp,
                 &b_vault_lp_info,
-                &ctx.accounts.protocol_token_fee.to_account_info(),
-                &ctx.accounts.vault_program.to_account_info(),
+                &ctx.accounts.protocol_token_fee,
+                &ctx.accounts.vault_program,
                 &ctx.accounts.token_program.to_account_info(),
-                &ctx.accounts.amm_program.to_account_info(),
+                &ctx.accounts.amm_program,
                 final_wsol_balance,
                 minimum_donut_out,
             ) {
-                ctx.accounts.state.is_locked = false;
+                state.is_locked = false;
+                let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+                let mut state_bytes = &mut state_data[8..];
+                state.serialize(&mut state_bytes)?;
                 return Err(e);
             }
             
@@ -2852,8 +3260,86 @@ pub mod referral_system {
         msg!("Registration completed successfully: slot={}, base_user={}, deposit_processed=true", 
              slot_idx + 1, is_base_user);
         
-        // PROTEÇÃO REENTRANCY - REMOVER LOCK NO FINAL
-        ctx.accounts.state.is_locked = false;
+        // REENTRANCY PROTECTION - REMOVE LOCK AT END
+        state.is_locked = false;
+        
+        // Write state back
+        let mut state_data = ctx.accounts.state.try_borrow_mut_data()?;
+        let mut state_bytes = &mut state_data[8..];
+        state.serialize(&mut state_bytes)?;
+        
         Ok(())
     }
 }
+
+// ===== ADDITIONAL HELPER TRAITS =====
+
+/// Discriminator trait for account types
+trait Discriminator {
+    fn discriminator() -> [u8; 8];
+}
+
+impl Discriminator for UserAccount {
+    fn discriminator() -> [u8; 8] {
+        // This should match the actual discriminator used by Anchor
+        // Usually it's the first 8 bytes of SHA256("account:UserAccount")
+        [216, 146, 107, 94, 104, 75, 182, 31]
+    }
+}
+
+// ===== TESTS MODULE =====
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decimal_display() {
+        let decimal = Decimal::new(12345678, 6);
+        assert_eq!(decimal.to_string(), "12.345678");
+        
+        let decimal2 = Decimal::new(100, 2);
+        assert_eq!(decimal2.to_string(), "1.00");
+        
+        let decimal3 = Decimal::new(5, 6);
+        assert_eq!(decimal3.to_string(), "0.000005");
+    }
+
+    #[test]
+    fn test_upline_entry_size() {
+        let entry = UplineEntry {
+            pda: Pubkey::default(),
+            wallet: Pubkey::default(),
+        };
+        
+        let serialized = entry.try_to_vec().unwrap();
+        assert_eq!(serialized.len(), 64); // 32 + 32 bytes
+    }
+
+    #[test]
+    fn test_user_account_size() {
+        // Verify that our SIZE constant matches the actual serialized size
+        let user = UserAccount {
+            is_registered: true,
+            referrer: Some(Pubkey::default()),
+            owner_wallet: Pubkey::default(),
+            upline: ReferralUpline {
+                id: 1,
+                depth: 1,
+                upline: vec![],
+            },
+            chain: ReferralChain {
+                id: 1,
+                slots: [None, None, None],
+                filled_slots: 0,
+            },
+            reserved_sol: 0,
+            reserved_tokens: 0,
+        };
+        
+        let serialized = user.try_to_vec().unwrap();
+        assert!(serialized.len() <= UserAccount::SIZE);
+    }
+}
+
+// ===== END OF CONTRACT =====

@@ -1069,7 +1069,7 @@ pub struct RegisterWithSolDeposit<'info> {
     pub referrer: Box<Account<'info, UserAccount>>,
     
     #[account(mut)]
-    /// CHECK: Referrer wallet - validated as system account
+    /// CHECK: Referrer wallet - validated in instruction
     pub referrer_wallet: UncheckedAccount<'info>,
     
     #[account(
@@ -1082,26 +1082,20 @@ pub struct RegisterWithSolDeposit<'info> {
     pub user: Box<Account<'info, UserAccount>>,
     
     /// User's WSOL account
-    #[account(
-        mut,
-        token::mint = wsol_mint,
-        token::authority = user_wallet
-    )]
-    pub user_wsol_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    /// CHECK: WSOL token account - validated in instruction
+    pub user_wsol_account: UncheckedAccount<'info>,
     
     /// Account to receive DONUT tokens
-    #[account(
-        init_if_needed,
-        payer = user_wallet,
-        token::mint = token_mint,
-        token::authority = user_wallet
-    )]
-    pub user_donut_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    /// CHECK: DONUT token account - validated in instruction
+    pub user_donut_account: UncheckedAccount<'info>,
     
     /// WSOL mint
-    pub wsol_mint: Account<'info, Mint>,
+    /// CHECK: WSOL mint - validated in instruction
+    pub wsol_mint: UncheckedAccount<'info>,
     
-    // METEORA ACCOUNTS - Using UncheckedAccount
+    // METEORA ACCOUNTS - All as UncheckedAccount
     #[account(mut)]
     /// CHECK: Pool account - validated in instruction
     pub pool: UncheckedAccount<'info>,
@@ -1150,7 +1144,8 @@ pub struct RegisterWithSolDeposit<'info> {
     /// CHECK: Program SOL vault PDA
     pub program_sol_vault: UncheckedAccount<'info>,
     
-    pub token_mint: Account<'info, Mint>,
+    /// CHECK: Token mint - validated in instruction
+    pub token_mint: UncheckedAccount<'info>,
     
     #[account(mut)]
     /// CHECK: Referrer's token account - validated in instruction
@@ -1165,7 +1160,9 @@ pub struct RegisterWithSolDeposit<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
+    
+    /// CHECK: Rent sysvar
+    pub rent: UncheckedAccount<'info>,
 }
 
 // ===== PROGRAMA PRINCIPAL =====
@@ -1392,7 +1389,8 @@ pub mod referral_system {
         }
         ctx.accounts.state.is_locked = true;
 
-           // Validar que referrer_wallet é uma conta do sistema
+           // ===== VALIDAÇÕES DE CONTAS =====
+    // Validar que referrer_wallet é uma conta do sistema
     let referrer_wallet_info = &ctx.accounts.referrer_wallet.to_account_info();
     if referrer_wallet_info.owner != &solana_program::system_program::ID {
         ctx.accounts.state.is_locked = false;
@@ -1405,6 +1403,26 @@ pub mod referral_system {
         ctx.accounts.state.is_locked = false;
         return Err(error!(ErrorCode::InvalidVaultAddress));
     }
+
+    // Validar que as contas token pertencem ao SPL Token Program
+    let user_wsol_account_info = &ctx.accounts.user_wsol_account.to_account_info();
+    if user_wsol_account_info.owner != &spl_token::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::InvalidTokenAccount));
+    }
+
+    let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+    if user_donut_account_info.owner != &spl_token::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::InvalidTokenAccount));
+    }
+
+    // Validar WSOL mint
+    verify_address_strict(&ctx.accounts.wsol_mint.key(), &verified_addresses::WSOL_MINT, ErrorCode::InvalidTokenMintAddress)?;
+    
+    // Validar token mint
+    verify_address_strict(&ctx.accounts.token_mint.key(), &verified_addresses::TOKEN_MINT, ErrorCode::InvalidTokenMintAddress)?;
+    // ===== FIM DAS VALIDAÇÕES =====
 
         check_and_process_week_change(&mut ctx.accounts.state)?;
         process_user_pending_weeks(&mut ctx.accounts.referrer, &ctx.accounts.state)?;

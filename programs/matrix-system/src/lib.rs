@@ -3,7 +3,7 @@ use anchor_lang::solana_program::{self};
 use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 
-declare_id!("CdKkHpRhewe3wJFpbouuQog5xTURycGgsyhyb7wjAVCv");
+declare_id!("G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
 
 // ===== CONSTANTS =====
 const MAX_PRICE_FEED_AGE: i64 = 86400;
@@ -29,7 +29,7 @@ pub mod verified_addresses {
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq");
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // CRITICAL SECURITY ADDRESSES 

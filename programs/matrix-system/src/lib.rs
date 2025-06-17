@@ -365,11 +365,13 @@ fn calculate_swap_amount_out<'info>(
     
     let result = donut_tokens as u64;
     
-    // Apply 1% slippage tolerance
+    // Apply 99% slippage tolerance (aceita receber apenas 1% do esperado)
     let minimum_out = result
-        .checked_mul(99)
+        .checked_mul(1)  // 1% do valor esperado
         .and_then(|n| n.checked_div(100))
         .ok_or(error!(ErrorCode::MeteoraCalculationOverflow))?;
+    
+    msg!("Expected output: {} DONUT, Minimum accepted (99% slippage): {} DONUT", result, minimum_out);
     
     Ok(if minimum_out == 0 { 1 } else { minimum_out })
 }

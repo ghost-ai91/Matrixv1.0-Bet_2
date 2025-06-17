@@ -518,7 +518,6 @@ fn process_swap<'info>(
     user_wsol_account: &AccountInfo<'info>,
     user_token_account: &AccountInfo<'info>,
     pool: &AccountInfo<'info>,
-    pool_authority: &AccountInfo<'info>,
     pool_token_a_vault: &AccountInfo<'info>,
     pool_token_b_vault: &AccountInfo<'info>,
     pool_token_a_fees: &AccountInfo<'info>,
@@ -527,12 +526,18 @@ fn process_swap<'info>(
     amount_in: u64,
     minimum_amount_out: u64,
 ) -> Result<()> {
+    // Derive pool authority
+    let (pool_authority, _) = Pubkey::find_program_address(
+        &[pool.key().as_ref()],
+        &pool_program.key()
+    );
+    
     // Meteora swap instruction discriminator
     let swap_discriminator: [u8; 8] = [248, 198, 158, 145, 225, 117, 135, 200];
     
     let swap_accounts = vec![
         solana_program::instruction::AccountMeta::new_readonly(pool.key(), false),
-        solana_program::instruction::AccountMeta::new_readonly(pool_authority.key(), false),
+        solana_program::instruction::AccountMeta::new_readonly(pool_authority, false),
         solana_program::instruction::AccountMeta::new(user_wallet.key(), true),
         solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false),
         solana_program::instruction::AccountMeta::new(pool_token_b_vault.key(), false),
@@ -553,9 +558,9 @@ fn process_swap<'info>(
         data: swap_data,
     };
 
+    // Note: We don't pass pool_authority in account_infos since it's derived
     let account_infos = vec![
         pool.clone(),
-        pool_authority.clone(),
         user_wallet.clone(),
         user_wsol_account.clone(),
         pool_token_b_vault.clone(),
@@ -719,9 +724,6 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
 
-    /// CHECK: Pool authority
-    pub pool_authority: UncheckedAccount<'info>,
-
     /// CHECK: Pool token A vault (DONUT)
     #[account(mut)]
     pub pool_token_a_vault: UncheckedAccount<'info>,
@@ -792,9 +794,6 @@ pub struct RegisterWithSolSwap<'info> {
     /// CHECK: Pool account (PDA)
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
-
-    /// CHECK: Pool authority
-    pub pool_authority: UncheckedAccount<'info>,
 
     /// CHECK: Pool token A vault (DONUT)
     #[account(mut)]
@@ -934,7 +933,6 @@ pub mod referral_system {
             &ctx.accounts.user_wsol_account.to_account_info(),
             &ctx.accounts.user_token_account.to_account_info(),
             &ctx.accounts.pool.to_account_info(),
-            &ctx.accounts.pool_authority.to_account_info(),
             &ctx.accounts.pool_token_a_vault.to_account_info(),
             &ctx.accounts.pool_token_b_vault.to_account_info(),
             &ctx.accounts.pool_token_a_fees.to_account_info(),

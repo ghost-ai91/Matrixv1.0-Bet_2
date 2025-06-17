@@ -55,7 +55,7 @@ async function main() {
     
     // Configurar endereços importantes
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "FfBSmwqALJHFtHMa5jxn6DEeKR5jNddibAo84tokSbFS");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "FAjhJ4GL3mcTX5w6NV5mEBBgSNFJRoPf7Si6GNXLqS8n");
     
     // Pool address para swap
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

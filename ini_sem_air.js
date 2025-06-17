@@ -22,7 +22,7 @@ const PROGRAM_ID = new PublicKey(
   "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin"
 )
 const MULTISIG_TREASURY = new PublicKey(
-  "QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv"
+  "5C16cVYXe7KRPz6rBD33qhcqyjvy42LP8tyJRNMXbKiL"
 )
 
 // Função para carregar uma carteira a partir de um arquivo

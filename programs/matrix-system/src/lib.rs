@@ -543,7 +543,8 @@ pub struct RegisterWithoutReferrer<'info> {
     /// CHECK: Vault program
     pub vault_program: UncheckedAccount<'info>,
 
-    /// CHECK: Token mint
+    /// CHECK: Token mint - needs to be mutable for burn
+    #[account(mut)]
     pub token_mint: UncheckedAccount<'info>,
     
     /// CHECK: Protocol fee account for Meteora

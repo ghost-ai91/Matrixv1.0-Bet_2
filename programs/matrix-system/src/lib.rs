@@ -51,8 +51,19 @@ pub mod verified_addresses {
     pub static CHAINLINK_PROGRAM: Pubkey = solana_program::pubkey!("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
     pub static SOL_USD_FEED: Pubkey = solana_program::pubkey!("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
     
+    // Meteora Vault addresses - CORRECTED
+    pub static A_VAULT: Pubkey = solana_program::pubkey!("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
+    pub static B_VAULT: Pubkey = solana_program::pubkey!("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
+    pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
+    pub static B_TOKEN_VAULT: Pubkey = solana_program::pubkey!("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
+    pub static A_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
+    pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
+    pub static A_VAULT_LP: Pubkey = solana_program::pubkey!("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
+    pub static B_VAULT_LP: Pubkey = solana_program::pubkey!("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
+    pub static VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
+    
     // CRITICAL SECURITY ADDRESSES 
-    pub static METEORA_POOL_PROGRAM: Pubkey = solana_program::pubkey!("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo");
+    pub static METEORA_POOL_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
 }
 
 // Admin account addresses
@@ -200,6 +211,12 @@ pub enum ErrorCode {
 
     #[msg("Transaction locked to prevent reentrancy")]
     ReentrancyLock,
+
+    #[msg("Invalid vault address")]
+    InvalidVaultAddress,
+    
+    #[msg("Invalid vault program")]
+    InvalidVaultProgram,
 }
 
 // Event structure for slot filling
@@ -302,9 +319,27 @@ fn verify_address_strict(provided: &Pubkey, expected: &Pubkey, error_code: Error
 fn verify_all_fixed_addresses<'info>(
     pool: &Pubkey,
     wsol_mint: &Pubkey,
+    a_vault: &Pubkey,
+    b_vault: &Pubkey,
+    a_token_vault: &Pubkey,
+    b_token_vault: &Pubkey,
+    a_vault_lp_mint: &Pubkey,
+    b_vault_lp_mint: &Pubkey,
+    a_vault_lp: &Pubkey,
+    b_vault_lp: &Pubkey,
+    vault_program: &Pubkey,
 ) -> Result<()> {
     verify_address_strict(pool, &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
     verify_address_strict(wsol_mint, &verified_addresses::WSOL_MINT, ErrorCode::InvalidWsolMintAddress)?;
+    verify_address_strict(a_vault, &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(b_vault, &verified_addresses::B_VAULT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(a_token_vault, &verified_addresses::A_TOKEN_VAULT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(b_token_vault, &verified_addresses::B_TOKEN_VAULT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(a_vault_lp_mint, &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(b_vault_lp_mint, &verified_addresses::B_VAULT_LP_MINT, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(a_vault_lp, &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(b_vault_lp, &verified_addresses::B_VAULT_LP, ErrorCode::InvalidVaultAddress)?;
+    verify_address_strict(vault_program, &verified_addresses::VAULT_PROGRAM, ErrorCode::InvalidVaultProgram)?;
     
     Ok(())
 }
@@ -512,38 +547,44 @@ fn manage_wsol_operation<'info>(
     Ok(())
 }
 
-// Function to process swap on Meteora pool
+// CORRECTED: Function to process swap on Meteora pool
 fn process_swap<'info>(
     user_wallet: &AccountInfo<'info>,
     user_wsol_account: &AccountInfo<'info>,
     user_token_account: &AccountInfo<'info>,
     pool: &AccountInfo<'info>,
-    pool_token_a_vault: &AccountInfo<'info>,
-    pool_token_b_vault: &AccountInfo<'info>,
-    pool_token_a_fees: &AccountInfo<'info>,
+    a_vault: &AccountInfo<'info>,
+    b_vault: &AccountInfo<'info>,
+    a_token_vault: &AccountInfo<'info>,
+    b_token_vault: &AccountInfo<'info>,
+    a_vault_lp_mint: &AccountInfo<'info>,
+    b_vault_lp_mint: &AccountInfo<'info>,
+    a_vault_lp: &AccountInfo<'info>,
+    b_vault_lp: &AccountInfo<'info>,
+    vault_program: &AccountInfo<'info>,
     pool_program: &UncheckedAccount<'info>,
     token_program: &Program<'info, Token>,
     amount_in: u64,
     minimum_amount_out: u64,
 ) -> Result<()> {
-    // Derive pool authority
-    let (pool_authority, _) = Pubkey::find_program_address(
-        &[pool.key().as_ref()],
-        &pool_program.key()
-    );
-    
     // Meteora swap instruction discriminator
     let swap_discriminator: [u8; 8] = [248, 198, 158, 145, 225, 117, 135, 200];
     
+    // CORRECTED: Meteora swap accounts structure
     let swap_accounts = vec![
-        solana_program::instruction::AccountMeta::new_readonly(pool.key(), false),
-        solana_program::instruction::AccountMeta::new_readonly(pool_authority, false),
-        solana_program::instruction::AccountMeta::new(user_wallet.key(), true),
-        solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false),
-        solana_program::instruction::AccountMeta::new(pool_token_b_vault.key(), false),
-        solana_program::instruction::AccountMeta::new(user_token_account.key(), false),
-        solana_program::instruction::AccountMeta::new(pool_token_a_vault.key(), false),
-        solana_program::instruction::AccountMeta::new(pool_token_a_fees.key(), false),
+        solana_program::instruction::AccountMeta::new(pool.key(), false),
+        solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false),      // user_source_token
+        solana_program::instruction::AccountMeta::new(user_token_account.key(), false),     // user_destination_token
+        solana_program::instruction::AccountMeta::new(a_vault.key(), false),
+        solana_program::instruction::AccountMeta::new(b_vault.key(), false),
+        solana_program::instruction::AccountMeta::new(a_token_vault.key(), false),
+        solana_program::instruction::AccountMeta::new(b_token_vault.key(), false),
+        solana_program::instruction::AccountMeta::new(a_vault_lp_mint.key(), false),
+        solana_program::instruction::AccountMeta::new(b_vault_lp_mint.key(), false),
+        solana_program::instruction::AccountMeta::new(a_vault_lp.key(), false),
+        solana_program::instruction::AccountMeta::new(b_vault_lp.key(), false),
+        solana_program::instruction::AccountMeta::new_readonly(user_wallet.key(), true),    // user (Signer)
+        solana_program::instruction::AccountMeta::new_readonly(vault_program.key(), false),
         solana_program::instruction::AccountMeta::new_readonly(token_program.key(), false),
     ];
 
@@ -558,15 +599,21 @@ fn process_swap<'info>(
         data: swap_data,
     };
 
-    // Note: We don't pass pool_authority in account_infos since it's derived
+    // All required accounts for the swap
     let account_infos = vec![
         pool.clone(),
-        user_wallet.clone(),
         user_wsol_account.clone(),
-        pool_token_b_vault.clone(),
         user_token_account.clone(),
-        pool_token_a_vault.clone(),
-        pool_token_a_fees.clone(),
+        a_vault.clone(),
+        b_vault.clone(),
+        a_token_vault.clone(),
+        b_token_vault.clone(),
+        a_vault_lp_mint.clone(),
+        b_vault_lp_mint.clone(),
+        a_vault_lp.clone(),
+        b_vault_lp.clone(),
+        user_wallet.clone(),
+        vault_program.clone(),
         token_program.to_account_info(),
     ];
 
@@ -685,7 +732,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// Accounts for registration without referrer with swap
+// CORRECTED: Accounts for registration without referrer with swap
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithoutReferrerSwap<'info> {
@@ -724,17 +771,41 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token A vault (DONUT)
+    // CORRECTED: Meteora vault accounts
+    /// CHECK: Vault A account
     #[account(mut)]
-    pub pool_token_a_vault: UncheckedAccount<'info>,
+    pub a_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B account
+    #[account(mut)]
+    pub b_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Token A vault (DONUT)
+    #[account(mut)]
+    pub a_token_vault: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token B vault (WSOL)
+    /// CHECK: Token B vault (WSOL)
     #[account(mut)]
-    pub pool_token_b_vault: UncheckedAccount<'info>,
+    pub b_token_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP mint
+    #[account(mut)]
+    pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP mint
+    #[account(mut)]
+    pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP token account
+    #[account(mut)]
+    pub a_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP token account
+    #[account(mut)]
+    pub b_vault_lp: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token A fees
-    #[account(mut)]
-    pub pool_token_a_fees: UncheckedAccount<'info>,
+    /// CHECK: Vault program
+    pub vault_program: UncheckedAccount<'info>,
 
     /// CHECK: Pool program
     pub pool_program: UncheckedAccount<'info>,
@@ -746,7 +817,7 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// Structure for registration with SOL swap
+// CORRECTED: Structure for registration with SOL swap
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithSolSwap<'info> {
@@ -795,17 +866,41 @@ pub struct RegisterWithSolSwap<'info> {
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token A vault (DONUT)
+    // CORRECTED: Meteora vault accounts
+    /// CHECK: Vault A account
     #[account(mut)]
-    pub pool_token_a_vault: UncheckedAccount<'info>,
+    pub a_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B account
+    #[account(mut)]
+    pub b_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Token A vault (DONUT)
+    #[account(mut)]
+    pub a_token_vault: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token B vault (WSOL)
+    /// CHECK: Token B vault (WSOL)
     #[account(mut)]
-    pub pool_token_b_vault: UncheckedAccount<'info>,
+    pub b_token_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP mint
+    #[account(mut)]
+    pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP mint
+    #[account(mut)]
+    pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP token account
+    #[account(mut)]
+    pub a_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP token account
+    #[account(mut)]
+    pub b_vault_lp: UncheckedAccount<'info>,
 
-    /// CHECK: Pool token A fees
-    #[account(mut)]
-    pub pool_token_a_fees: UncheckedAccount<'info>,
+    /// CHECK: Vault program
+    pub vault_program: UncheckedAccount<'info>,
 
     /// CHECK: Pool program
     pub pool_program: UncheckedAccount<'info>,
@@ -846,7 +941,7 @@ pub mod referral_system {
         Ok(())
     }
     
-    // Register without referrer
+    // CORRECTED: Register without referrer
     pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerSwap>, deposit_amount: u64) -> Result<()> {
         // PROTEÇÃO REENTRANCY
         if ctx.accounts.state.is_locked {
@@ -864,6 +959,15 @@ pub mod referral_system {
         if let Err(e) = verify_all_fixed_addresses(
             &ctx.accounts.pool.key(),
             &ctx.accounts.wsol_mint.key(),
+            &ctx.accounts.a_vault.key(),
+            &ctx.accounts.b_vault.key(),
+            &ctx.accounts.a_token_vault.key(),
+            &ctx.accounts.b_token_vault.key(),
+            &ctx.accounts.a_vault_lp_mint.key(),
+            &ctx.accounts.b_vault_lp_mint.key(),
+            &ctx.accounts.a_vault_lp.key(),
+            &ctx.accounts.b_vault_lp.key(),
+            &ctx.accounts.vault_program.key(),
         ) {
             ctx.accounts.state.is_locked = false;
             return Err(e);
@@ -927,15 +1031,21 @@ pub mod referral_system {
             error!(ErrorCode::WrapSolFailed)
         })?;
 
-        // Process swap from WSOL to DONUT
+        // CORRECTED: Process swap from WSOL to DONUT
         if let Err(e) = process_swap(
             &ctx.accounts.user_wallet.to_account_info(),
             &ctx.accounts.user_wsol_account.to_account_info(),
             &ctx.accounts.user_token_account.to_account_info(),
             &ctx.accounts.pool.to_account_info(),
-            &ctx.accounts.pool_token_a_vault.to_account_info(),
-            &ctx.accounts.pool_token_b_vault.to_account_info(),
-            &ctx.accounts.pool_token_a_fees.to_account_info(),
+            &ctx.accounts.a_vault.to_account_info(),
+            &ctx.accounts.b_vault.to_account_info(),
+            &ctx.accounts.a_token_vault.to_account_info(),
+            &ctx.accounts.b_token_vault.to_account_info(),
+            &ctx.accounts.a_vault_lp_mint.to_account_info(),
+            &ctx.accounts.b_vault_lp_mint.to_account_info(),
+            &ctx.accounts.a_vault_lp.to_account_info(),
+            &ctx.accounts.b_vault_lp.to_account_info(),
+            &ctx.accounts.vault_program.to_account_info(),
             &ctx.accounts.pool_program,
             &ctx.accounts.token_program,
             deposit_amount,
@@ -950,7 +1060,7 @@ pub mod referral_system {
         Ok(())
     }
 
-    // Register with SOL swap
+    // CORRECTED: Register with SOL swap
     pub fn register_with_sol_swap<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolSwap<'info>>, 
         deposit_amount: u64
@@ -1065,6 +1175,15 @@ pub mod referral_system {
         if let Err(e) = verify_all_fixed_addresses(
             &ctx.accounts.pool.key(),
             &ctx.accounts.wsol_mint.key(),
+            &ctx.accounts.a_vault.key(),
+            &ctx.accounts.b_vault.key(),
+            &ctx.accounts.a_token_vault.key(),
+            &ctx.accounts.b_token_vault.key(),
+            &ctx.accounts.a_vault_lp_mint.key(),
+            &ctx.accounts.b_vault_lp_mint.key(),
+            &ctx.accounts.a_vault_lp.key(),
+            &ctx.accounts.b_vault_lp.key(),
+            &ctx.accounts.vault_program.key(),
         ) {
             ctx.accounts.state.is_locked = false;
             return Err(e);
@@ -1158,9 +1277,15 @@ pub mod referral_system {
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_token_account.to_account_info(),
                 &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.pool_token_a_vault.to_account_info(),
-                &ctx.accounts.pool_token_b_vault.to_account_info(),
-                &ctx.accounts.pool_token_a_fees.to_account_info(),
+                &ctx.accounts.a_vault.to_account_info(),
+                &ctx.accounts.b_vault.to_account_info(),
+                &ctx.accounts.a_token_vault.to_account_info(),
+                &ctx.accounts.b_token_vault.to_account_info(),
+                &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &ctx.accounts.a_vault_lp.to_account_info(),
+                &ctx.accounts.b_vault_lp.to_account_info(),
+                &ctx.accounts.vault_program.to_account_info(),
                 &ctx.accounts.pool_program,
                 &ctx.accounts.token_program,
                 deposit_amount,
@@ -1290,9 +1415,15 @@ pub mod referral_system {
                     &ctx.accounts.user_wsol_account.to_account_info(),
                     &ctx.accounts.user_token_account.to_account_info(),
                     &ctx.accounts.pool.to_account_info(),
-                    &ctx.accounts.pool_token_a_vault.to_account_info(),
-                    &ctx.accounts.pool_token_b_vault.to_account_info(),
-                    &ctx.accounts.pool_token_a_fees.to_account_info(),
+                    &ctx.accounts.a_vault.to_account_info(),
+                    &ctx.accounts.b_vault.to_account_info(),
+                    &ctx.accounts.a_token_vault.to_account_info(),
+                    &ctx.accounts.b_token_vault.to_account_info(),
+                    &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                    &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                    &ctx.accounts.a_vault_lp.to_account_info(),
+                    &ctx.accounts.b_vault_lp.to_account_info(),
+                    &ctx.accounts.vault_program.to_account_info(),
                     &ctx.accounts.pool_program,
                     &ctx.accounts.token_program,
                     current_deposit,
@@ -1406,14 +1537,21 @@ pub mod referral_system {
                                 return Err(e);
                             }
                             
+                            // CORRECTED: Use new process_swap function
                             if let Err(e) = process_swap(
                                 &ctx.accounts.user_wallet.to_account_info(),
                                 &ctx.accounts.user_wsol_account.to_account_info(),
                                 &ctx.accounts.user_token_account.to_account_info(),
                                 &ctx.accounts.pool.to_account_info(),
-                                &ctx.accounts.pool_token_a_vault.to_account_info(),
-                                &ctx.accounts.pool_token_b_vault.to_account_info(),
-                                &ctx.accounts.pool_token_a_fees.to_account_info(),
+                                &ctx.accounts.a_vault.to_account_info(),
+                                &ctx.accounts.b_vault.to_account_info(),
+                                &ctx.accounts.a_token_vault.to_account_info(),
+                                &ctx.accounts.b_token_vault.to_account_info(),
+                                &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                                &ctx.accounts.a_vault_lp.to_account_info(),
+                                &ctx.accounts.b_vault_lp.to_account_info(),
+                                &ctx.accounts.vault_program.to_account_info(),
                                 &ctx.accounts.pool_program,
                                 &ctx.accounts.token_program,
                                 current_deposit,
@@ -1542,14 +1680,21 @@ pub mod referral_system {
                         return Err(e);
                     }
                     
+                    // CORRECTED: Use new process_swap function
                     if let Err(e) = process_swap(
                         &ctx.accounts.user_wallet.to_account_info(),
                         &ctx.accounts.user_wsol_account.to_account_info(),
                         &ctx.accounts.user_token_account.to_account_info(),
                         &ctx.accounts.pool.to_account_info(),
-                        &ctx.accounts.pool_token_a_vault.to_account_info(),
-                        &ctx.accounts.pool_token_b_vault.to_account_info(),
-                        &ctx.accounts.pool_token_a_fees.to_account_info(),
+                        &ctx.accounts.a_vault.to_account_info(),
+                        &ctx.accounts.b_vault.to_account_info(),
+                        &ctx.accounts.a_token_vault.to_account_info(),
+                        &ctx.accounts.b_token_vault.to_account_info(),
+                        &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                        &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                        &ctx.accounts.a_vault_lp.to_account_info(),
+                        &ctx.accounts.b_vault_lp.to_account_info(),
+                        &ctx.accounts.vault_program.to_account_info(),
                         &ctx.accounts.pool_program,
                         &ctx.accounts.token_program,
                         current_deposit,
@@ -1577,14 +1722,21 @@ pub mod referral_system {
         if final_wsol_balance > 0 {
             msg!("EMERGENCY: Found remaining WSOL balance: {}, forcing swap", final_wsol_balance);
             
+            // CORRECTED: Use new process_swap function
             if let Err(e) = process_swap(
                 &ctx.accounts.user_wallet.to_account_info(),
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_token_account.to_account_info(),
                 &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.pool_token_a_vault.to_account_info(),
-                &ctx.accounts.pool_token_b_vault.to_account_info(),
-                &ctx.accounts.pool_token_a_fees.to_account_info(),
+                &ctx.accounts.a_vault.to_account_info(),
+                &ctx.accounts.b_vault.to_account_info(),
+                &ctx.accounts.a_token_vault.to_account_info(),
+                &ctx.accounts.b_token_vault.to_account_info(),
+                &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &ctx.accounts.a_vault_lp.to_account_info(),
+                &ctx.accounts.b_vault_lp.to_account_info(),
+                &ctx.accounts.vault_program.to_account_info(),
                 &ctx.accounts.pool_program,
                 &ctx.accounts.token_program,
                 final_wsol_balance,

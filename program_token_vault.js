@@ -2,7 +2,7 @@ import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 
 // Substitua pelo seu Program ID real
-const PROGRAM_ID = new PublicKey("CdKkHpRhewe3wJFpbouuQog5xTURycGgsyhyb7wjAVCv");
+const PROGRAM_ID = new PublicKey("EWV1YNfhBTacafij2ffJ7RNyMuBVKNqtVgpyMiwX7syi");
 
 // Token mint do DONUT (já definido no seu contrato)
 const TOKEN_MINT = new PublicKey("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq");

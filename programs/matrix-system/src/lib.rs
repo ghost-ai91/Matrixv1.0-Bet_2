@@ -784,7 +784,6 @@ fn process_swap_wsol_to_donut<'info>(
 fn get_donut_balance_after_swap<'info>(
     user_donut_account: &AccountInfo<'info>,
 ) -> Result<u64> {
-    user_donut_account.reload()?;
     let data = user_donut_account.try_borrow_data()?;
     
     if data.len() < 72 {

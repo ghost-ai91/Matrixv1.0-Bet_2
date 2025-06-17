@@ -1,4 +1,4 @@
-// base_user_v2.js - AIRDROP SYSTEM VERSION
+// base_user_v2.js - AIRDROP SYSTEM VERSION CORRIGIDO
 // Script para registrar usuário base do sistema de referral com Airdrop de 36 semanas
 
 const { Connection, Keypair, PublicKey, SystemProgram, Transaction, ComputeBudgetProgram, TransactionInstruction } = require('@solana/web3.js');
@@ -8,7 +8,7 @@ const path = require('path');
 
 // Receber parâmetros da linha de comando (opcional)
 const args = process.argv.slice(2);
-const walletPath = args[0] || './carteiras/carteira14.json';
+const walletPath = args[0] || '/Users/dark/.config/solana/id.json';
 const configPath = args[1] || './matriz-airdrop-config.json';
 
 async function main() {
@@ -62,9 +62,9 @@ async function main() {
     console.log('Conectando à Devnet');
     
     // Configurar endereços importantes
-    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy");
+    const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
     const TOKEN_MINT = new PublicKey(config.tokenMint || "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "FPndQRxvdZqum3QaEATCzDRn247B6YgsjgaK18fy5c8w");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "5bwiCzQLtye1inAWjnUVQyfaWnaqXWJVfAP1m5RAFyp1");
     
     // Pool e vault addresses - VERIFIED for airdrop contract
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
@@ -81,6 +81,9 @@ async function main() {
     const B_VAULT_LP_MINT = new PublicKey("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     const B_VAULT_LP = new PublicKey("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
     const VAULT_PROGRAM = new PublicKey("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
+    
+    // AIRDROP SYSTEM: Meteora AMM program
+    const METEORA_AMM_PROGRAM = new PublicKey("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
     
     // Chainlink addresses (Devnet) - VERIFIED
     const CHAINLINK_PROGRAM = new PublicKey("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
@@ -209,6 +212,21 @@ async function main() {
       console.log("✅ Usuário ainda não registrado, prosseguindo com registro...");
     }
     
+    // AIRDROP SYSTEM: Derivar PDAs necessárias para sistema de airdrop
+    console.log("\n🔧 DERIVANDO PDAs PARA SISTEMA DE AIRDROP...");
+    
+    const [tempDonutVault, tempDonutVaultBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("temp_donut_vault")],
+      MATRIX_PROGRAM_ID
+    );
+    console.log("🔥 TEMP_DONUT_VAULT: " + tempDonutVault.toString());
+    
+    const [tempDonutAuthority, tempDonutAuthorityBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("temp_donut_authority")],
+      MATRIX_PROGRAM_ID
+    );
+    console.log("🔥 TEMP_DONUT_AUTHORITY: " + tempDonutAuthority.toString());
+    
     // Gerar nova keypair para a conta WSOL temporária
     const tokenKeypair = Keypair.generate();
     const tokenAddress = tokenKeypair.publicKey.toString();
@@ -329,11 +347,11 @@ async function main() {
     
     // Configurar compute units para operações complexas
     const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-      units: 1_000_000, // Suficiente para operações de airdrop
+      units: 1_400_000, // Aumentado para sistema de airdrop
     });
     
     const setPriority = ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: 6000,
+      microLamports: 10000,
     });
     
     try {
@@ -347,14 +365,15 @@ async function main() {
           owner: walletKeypair.publicKey, // Owner = usuário (multisig treasury)
           userWallet: walletKeypair.publicKey,
           user: userPDA,
-          userSourceToken: tokenKeypair.publicKey,
-          wsolMint: WSOL_MINT,
+          tempDonutVault: tempDonutVault,
+          tempDonutAuthority: tempDonutAuthority,
           pool: POOL_ADDRESS,
           bVault: B_VAULT,
           bTokenVault: B_TOKEN_VAULT,
           bVaultLpMint: B_VAULT_LP_MINT,
           bVaultLp: B_VAULT_LP,
           vaultProgram: VAULT_PROGRAM,
+          ammProgram: METEORA_AMM_PROGRAM,
           tokenMint: TOKEN_MINT,
           tokenProgram: SPL_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -467,11 +486,14 @@ async function main() {
       console.log("5. 📈 Acompanhe sistema com get_program_info");
       
       console.log("\n🔥 SISTEMA DEFLATIONARY ATIVO:");
-      console.log("• Slot 1: Swap SOL → DONUT → Burn");
-      console.log("• Slot 2: Reserva SOL");
-      console.log("• Slot 3: Paga SOL + Recursão com Burn");
+      console.log("• Swap SOL → DONUT → Burn (deflationary)");
       console.log("• Airdrops: Baseados em matrizes completadas");
       console.log("• Duração: 36 semanas progressivas");
+      console.log("• Claims: Sob demanda via instrução dedicada");
+      
+      console.log("\n🛡️ ENDEREÇOS IMPORTANTES PARA REFERENCIAMENTO:");
+      console.log(`🔑 Wallet para usar como referenciador: ${walletKeypair.publicKey.toString()}`);
+      console.log(`📄 PDA derivado automaticamente: ${userPDA.toString()}`);
       
     } catch (error) {
       console.error("\n❌ ERRO DURANTE O REGISTRO:");

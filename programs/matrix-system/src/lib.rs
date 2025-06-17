@@ -29,7 +29,7 @@ pub mod verified_addresses {
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq");
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // CRITICAL SECURITY ADDRESSES 
@@ -538,6 +538,7 @@ pub struct RegisterWithoutReferrer<'info> {
     pub token_mint: UncheckedAccount<'info>,
     
     /// CHECK: Protocol fee account for Meteora
+    #[account(mut)]
     pub protocol_token_fee: UncheckedAccount<'info>,
     
     /// CHECK: Meteora Dynamic AMM program

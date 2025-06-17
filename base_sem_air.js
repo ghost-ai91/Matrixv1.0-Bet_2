@@ -78,7 +78,7 @@ async function main() {
     
     // Programas do sistema
     const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
-    const DONUT_MINT = new PublicKey("9PR7nCP9DpcUotnDPVLUBUZKu5WAYkwrCUx9wDnSpump");
+    const DONUT_MINT = new PublicKey("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq");
     const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
     
@@ -140,6 +140,41 @@ async function main() {
     console.log("\n🔍 DERIVANDO ATA PARA TOKENS DONUT...");
     const userTokenAccount = getAssociatedTokenAddress(DONUT_MINT, wallet.publicKey);
     console.log(`🪙 ATA do usuário para DONUT: ${userTokenAccount.toString()}`);
+    
+    // Verificar se a ATA já existe, se não, criar
+    console.log("\n🔍 VERIFICANDO E CRIANDO ATA PARA DONUT...");
+    try {
+        const ataInfo = await connection.getAccountInfo(userTokenAccount);
+        if (!ataInfo) {
+            console.log("📝 ATA não existe, criando...");
+            
+            const createATAIx = new TransactionInstruction({
+                keys: [
+                    { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+                    { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+                    { pubkey: wallet.publicKey, isSigner: false, isWritable: false },
+                    { pubkey: DONUT_MINT, isSigner: false, isWritable: false },
+                    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                    { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+                ],
+                programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+                data: Buffer.alloc(0),
+            });
+            
+            const ataTransaction = new Transaction().add(createATAIx);
+            const ataSignature = await connection.sendTransaction(ataTransaction, [wallet]);
+            await connection.confirmTransaction(ataSignature);
+            
+            console.log(`✅ ATA criada: ${ataSignature}`);
+            console.log(`🔍 Link: https://explorer.solana.com/tx/${ataSignature}?cluster=devnet`);
+        } else {
+            console.log("✅ ATA já existe");
+        }
+    } catch (error) {
+        console.log(`❌ Erro ao verificar/criar ATA: ${error.message}`);
+        return;
+    }
     
     // Gerar keypair para conta WSOL temporária
     const wsolKeypair = Keypair.generate();

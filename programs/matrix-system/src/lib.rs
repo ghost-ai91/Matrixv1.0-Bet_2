@@ -63,7 +63,7 @@ pub mod verified_addresses {
     pub static VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
     
     // CRITICAL SECURITY ADDRESSES 
-    pub static METEORA_POOL_PROGRAM: Pubkey = solana_program::pubkey!("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo");
+    pub static METEORA_POOL_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
 }
 
 // Admin account addresses

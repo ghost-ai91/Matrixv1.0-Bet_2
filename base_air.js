@@ -1,5 +1,5 @@
-// base_user_v2.js - AIRDROP SYSTEM VERSION CORRIGIDO
-// Script para registrar usuário base do sistema de referral com Airdrop de 36 semanas
+// base_user_v3_simplified.js - AIRDROP SYSTEM VERSION SIMPLIFICADO
+// Script para registrar usuário base do sistema de referral com Airdrop - SEM TEMP VAULT
 
 const { Connection, Keypair, PublicKey, SystemProgram, Transaction, ComputeBudgetProgram, TransactionInstruction } = require('@solana/web3.js');
 const { AnchorProvider, Program, BN, Wallet, utils } = require('@coral-xyz/anchor');
@@ -13,10 +13,10 @@ const configPath = args[1] || './matriz-airdrop-config.json';
 
 async function main() {
   try {
-    console.log("🚀 REGISTRANDO USUÁRIO BASE - SISTEMA DE AIRDROP v2.0 🚀");
-    console.log("============================================================");
-    console.log("🎯 Versão: AIRDROP SYSTEM (36 semanas progressivas)");
-    console.log("🔥 Modelo: DEFLATIONARY (Swap + Burn)");
+    console.log("🚀 REGISTRANDO USUÁRIO BASE - SISTEMA SIMPLIFICADO v3.0 🚀");
+    console.log("=============================================================");
+    console.log("🎯 Versão: AIRDROP SYSTEM SIMPLIFICADO (sem temp vault)");
+    console.log("🔥 Modelo: DEFLATIONARY (Swap direto + Burn)");
     
     // Carregar carteira
     console.log(`Carregando carteira de ${walletPath}...`);
@@ -66,6 +66,9 @@ async function main() {
     const TOKEN_MINT = new PublicKey(config.tokenMint || "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
     const STATE_ADDRESS = new PublicKey(config.stateAddress || "5bwiCzQLtye1inAWjnUVQyfaWnaqXWJVfAP1m5RAFyp1");
     
+    // PRINCIPAL VAULT (USADO PARA SWAP+BURN)
+    const PROGRAM_TOKEN_VAULT = new PublicKey(config.programTokenVault || "BBJi5yNpb9oRi1ZA6SqVmQwZ8wbekuPcwUXZZNhrpCvh");
+    
     // Pool e vault addresses - VERIFIED for airdrop contract
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
@@ -82,7 +85,7 @@ async function main() {
     const B_VAULT_LP = new PublicKey("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
     const VAULT_PROGRAM = new PublicKey("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
     
-    // AIRDROP SYSTEM: Meteora AMM program
+    // METEORA AMM program
     const METEORA_AMM_PROGRAM = new PublicKey("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
     
     // Chainlink addresses (Devnet) - VERIFIED
@@ -212,107 +215,21 @@ async function main() {
       console.log("✅ Usuário ainda não registrado, prosseguindo com registro...");
     }
     
-    // AIRDROP SYSTEM: Derivar PDAs necessárias para sistema de airdrop
-    console.log("\n🔧 DERIVANDO PDAs PARA SISTEMA DE AIRDROP...");
+    // SIMPLIFICADO: Derivar apenas as PDAs necessárias
+    console.log("\n🔧 DERIVANDO PDAs PARA SISTEMA SIMPLIFICADO...");
     
-    const [tempDonutVault, tempDonutVaultBump] = PublicKey.findProgramAddressSync(
-      [Buffer.from("temp_donut_vault")],
+    const [vaultAuthority, vaultAuthorityBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_authority")],
       MATRIX_PROGRAM_ID
     );
-    console.log("🔥 TEMP_DONUT_VAULT: " + tempDonutVault.toString());
+    console.log("🔑 VAULT_AUTHORITY: " + vaultAuthority.toString());
+    console.log("🔑 VAULT_AUTHORITY_BUMP: " + vaultAuthorityBump);
     
-    const [tempDonutAuthority, tempDonutAuthorityBump] = PublicKey.findProgramAddressSync(
-      [Buffer.from("temp_donut_authority")],
-      MATRIX_PROGRAM_ID
-    );
-    console.log("🔥 TEMP_DONUT_AUTHORITY: " + tempDonutAuthority.toString());
+    console.log("💰 PROGRAM_TOKEN_VAULT: " + PROGRAM_TOKEN_VAULT.toString());
+    console.log("✅ Usando vault principal para swap+burn direto");
     
-    // Gerar nova keypair para a conta WSOL temporária
-    const tokenKeypair = Keypair.generate();
-    const tokenAddress = tokenKeypair.publicKey.toString();
-    console.log(`🔑 Nova keypair para conta WSOL gerada: ${tokenAddress}`);
-    
-    // ==== ETAPA 1: CRIAR CONTA WSOL TEMPORÁRIA ====
-    console.log("\n📋 ETAPA 1: CRIAR E FINANCIAR CONTA WSOL TEMPORÁRIA");
-    
-    // Calcular espaço necessário e aluguel
-    const tokenAccountSpace = 165; // Tamanho padrão para uma conta de token SPL
-    const rent = await connection.getMinimumBalanceForRentExemption(tokenAccountSpace);
-    const totalAmount = rent + DEPOSIT_AMOUNT;
-    
-    console.log(`💰 Aluguel para conta WSOL: ${rent / 1e9} SOL`);
-    console.log(`💰 Depósito para registro: ${DEPOSIT_AMOUNT / 1e9} SOL`);
-    console.log(`💰 Total a ser transferido: ${totalAmount / 1e9} SOL`);
-    console.log(`🛡️ Valor será validado contra Oracle Chainlink`);
-    
-    // Criar Transaction para setup da conta WSOL
-    const createWsolTx = new Transaction();
-    
-    // Etapa 1: Criar a conta token
-    createWsolTx.add(
-      SystemProgram.createAccount({
-        fromPubkey: walletKeypair.publicKey,
-        newAccountPubkey: tokenKeypair.publicKey,
-        lamports: totalAmount,
-        space: tokenAccountSpace,
-        programId: SPL_TOKEN_PROGRAM_ID,
-      })
-    );
-    
-    // Etapa 2: Inicializar a conta como token WSOL
-    createWsolTx.add(
-      new TransactionInstruction({
-        keys: [
-          { pubkey: tokenKeypair.publicKey, isSigner: false, isWritable: true },
-          { pubkey: WSOL_MINT, isSigner: false, isWritable: false },
-          { pubkey: walletKeypair.publicKey, isSigner: false, isWritable: false },
-          { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-        ],
-        programId: SPL_TOKEN_PROGRAM_ID,
-        data: Buffer.from([1, ...walletKeypair.publicKey.toBuffer()]),
-      })
-    );
-    
-    // Etapa 3: Sincronizar WSOL
-    createWsolTx.add(
-      new TransactionInstruction({
-        keys: [{ pubkey: tokenKeypair.publicKey, isSigner: false, isWritable: true }],
-        programId: SPL_TOKEN_PROGRAM_ID,
-        data: Buffer.from([17]), // SyncNative instruction code
-      })
-    );
-    
-    // Configurar a transação
-    createWsolTx.feePayer = walletKeypair.publicKey;
-    const blockhash = await connection.getLatestBlockhash();
-    createWsolTx.recentBlockhash = blockhash.blockhash;
-    
-    // Assinar a transação
-    createWsolTx.sign(walletKeypair, tokenKeypair);
-    
-    console.log("📤 Enviando transação para criar conta WSOL...");
-    const createTxId = await connection.sendRawTransaction(createWsolTx.serialize());
-    console.log(`✅ Transação enviada: ${createTxId}`);
-    console.log(`🔍 Link para explorador: https://explorer.solana.com/tx/${createTxId}?cluster=devnet`);
-    
-    // Aguardar confirmação
-    await connection.confirmTransaction({
-      signature: createTxId,
-      blockhash: blockhash.blockhash,
-      lastValidBlockHeight: blockhash.lastValidBlockHeight,
-    });
-    console.log("✅ Conta WSOL criada, inicializada e financiada!");
-    
-    // Verificar saldo da conta WSOL
-    try {
-      const tokenBalance = await connection.getTokenAccountBalance(tokenKeypair.publicKey);
-      console.log(`💰 Saldo da conta WSOL: ${tokenBalance.value.uiAmount} SOL`);
-    } catch (e) {
-      console.log(`⚠️ Não foi possível verificar o saldo WSOL: ${e.message}`);
-    }
-    
-    // ==== ETAPA 2: EXECUTAR REGISTRO DE USUÁRIO BASE ====
-    console.log("\n📋 ETAPA 2: EXECUTAR REGISTRO DE USUÁRIO BASE NO SISTEMA DE AIRDROP");
+    // ==== ETAPA ÚNICA: EXECUTAR REGISTRO SIMPLIFICADO ====
+    console.log("\n📋 EXECUTANDO REGISTRO SIMPLIFICADO (SEM TEMP VAULT)");
     
     // Preparar os remaining accounts para o sistema de airdrop
     const remainingAccounts = [
@@ -325,7 +242,7 @@ async function main() {
       { pubkey: CHAINLINK_PROGRAM, isWritable: false, isSigner: false }, // Index 6: Chainlink Program
     ];
     
-    console.log("\n🔍 CONFIGURANDO REMAINING_ACCOUNTS PARA SISTEMA DE AIRDROP:");
+    console.log("\n🔍 CONFIGURANDO REMAINING_ACCOUNTS PARA SISTEMA SIMPLIFICADO:");
     console.log("  ✓ POOL_ADDRESS: " + POOL_ADDRESS.toString());
     console.log("  ✓ A_VAULT: " + A_VAULT.toString());
     console.log("  ✓ A_VAULT_LP: " + A_VAULT_LP.toString());
@@ -355,18 +272,18 @@ async function main() {
     });
     
     try {
-      console.log("\n📤 Enviando transação de registro de usuário base no sistema de airdrop...");
-      console.log("🎯 Aplicando validações do sistema de airdrop...");
+      console.log("\n📤 Enviando transação de registro simplificado...");
+      console.log("🎯 Aplicando swap+burn direto no vault principal...");
       
       const txid = await program.methods
-        .registerWithoutReferrer(new BN(DEPOSIT_AMOUNT))
+        .registerWithoutReferrerSimplified(new BN(DEPOSIT_AMOUNT))
         .accounts({
           state: STATE_ADDRESS,
           owner: walletKeypair.publicKey, // Owner = usuário (multisig treasury)
           userWallet: walletKeypair.publicKey,
           user: userPDA,
-          tempDonutVault: tempDonutVault,
-          tempDonutAuthority: tempDonutAuthority,
+          programTokenVault: PROGRAM_TOKEN_VAULT,
+          vaultAuthority: vaultAuthority,
           pool: POOL_ADDRESS,
           bVault: B_VAULT,
           bTokenVault: B_TOKEN_VAULT,
@@ -393,7 +310,7 @@ async function main() {
       
       // Verificar se o registro foi bem-sucedido
       const userInfo = await program.account.userAccount.fetch(userPDA);
-      console.log("\n📋 CONFIRMAÇÃO DE REGISTRO NO SISTEMA DE AIRDROP:");
+      console.log("\n📋 CONFIRMAÇÃO DE REGISTRO SIMPLIFICADO:");
       console.log("✅ Usuário registrado: " + userInfo.isRegistered);
       console.log("🆔 Upline ID: " + userInfo.upline.id.toString());
       console.log("🆔 Chain ID: " + userInfo.chain.id.toString());
@@ -469,13 +386,13 @@ async function main() {
       console.log("\n💼 Seu novo saldo: " + newBalance / 1e9 + " SOL");
       console.log("💰 SOL gasto: " + (balance - newBalance) / 1e9 + " SOL");
       
-      console.log("\n🎉 REGISTRO DE USUÁRIO BASE NO SISTEMA DE AIRDROP CONCLUÍDO! 🎉");
-      console.log("🎯 SISTEMA DE AIRDROP ATIVO E FUNCIONANDO!");
-      console.log("==========================================================");
+      console.log("\n🎉 REGISTRO SIMPLIFICADO CONCLUÍDO COM SUCESSO! 🎉");
+      console.log("🎯 SISTEMA DE AIRDROP ATIVO SEM TEMP VAULT!");
+      console.log("=======================================================");
       console.log("\n📋 RESUMO DOS ENDEREÇOS:");
       console.log(`🏦 Usuário registrado: ${walletKeypair.publicKey.toString()}`);
       console.log(`📄 PDA da conta: ${userPDA.toString()}`);
-      console.log(`💰 Conta WSOL temporária: ${tokenKeypair.publicKey.toString()}`);
+      console.log(`💰 Vault principal usado: ${PROGRAM_TOKEN_VAULT.toString()}`);
       console.log(`💰 Valor de depósito: ${DEPOSIT_AMOUNT / 1e9} SOL`);
       
       console.log("\n🎯 PRÓXIMOS PASSOS:");
@@ -485,8 +402,9 @@ async function main() {
       console.log("4. 📊 Monitore progresso com get_user_airdrop_info");
       console.log("5. 📈 Acompanhe sistema com get_program_info");
       
-      console.log("\n🔥 SISTEMA DEFLATIONARY ATIVO:");
-      console.log("• Swap SOL → DONUT → Burn (deflationary)");
+      console.log("\n🔥 SISTEMA DEFLATIONARY ATIVO (SIMPLIFICADO):");
+      console.log("• Swap SOL → DONUT (vault principal) → Burn (imediato)");
+      console.log("• SEM vault temporário - processo direto");
       console.log("• Airdrops: Baseados em matrizes completadas");
       console.log("• Duração: 36 semanas progressivas");
       console.log("• Claims: Sob demanda via instrução dedicada");
@@ -494,6 +412,13 @@ async function main() {
       console.log("\n🛡️ ENDEREÇOS IMPORTANTES PARA REFERENCIAMENTO:");
       console.log(`🔑 Wallet para usar como referenciador: ${walletKeypair.publicKey.toString()}`);
       console.log(`📄 PDA derivado automaticamente: ${userPDA.toString()}`);
+      
+      console.log("\n✅ PRINCIPAIS MELHORIAS DESTA VERSÃO:");
+      console.log("• ❌ Removido temp_donut_vault (simplificado)");
+      console.log("• ✅ Usa apenas program_token_vault");
+      console.log("• ⚡ Processo mais rápido e eficiente");
+      console.log("• 🛡️ Mesmas validações de segurança");
+      console.log("• 🔥 Swap+burn ainda obrigatório");
       
     } catch (error) {
       console.error("\n❌ ERRO DURANTE O REGISTRO:");
@@ -509,11 +434,13 @@ async function main() {
           log.includes("week") ||
           log.includes("matrix") ||
           log.includes("burn") ||
-          log.includes("swap")
+          log.includes("swap") ||
+          log.includes("simplified") ||
+          log.includes("vault")
         );
         
         if (airdropLogs.length > 0) {
-          console.log("🎯 Logs relacionados ao airdrop:");
+          console.log("🎯 Logs relacionados ao sistema:");
           airdropLogs.forEach((log, i) => console.log(`  ${i}: ${log}`));
         }
         

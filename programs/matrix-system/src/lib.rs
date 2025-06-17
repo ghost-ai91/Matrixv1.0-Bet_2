@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{Token, TokenAccount};
+use anchor_spl::token::{self, Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
@@ -25,86 +25,24 @@ security_txt! {
     acknowledgements: "We thank all security researchers who contributed to the security of our protocol."
 }
 
-// ===== CONSTANTES =====
-
 // Minimum deposit amount in USD (10 dollars in base units - 8 decimals)
-const MINIMUM_USD_DEPOSIT: u64 = 10_00000000;
+const MINIMUM_USD_DEPOSIT: u64 = 10_00000000; // 10 USD with 8 decimals (Chainlink format)
 
 // Maximum price feed staleness (24 hours in seconds)
 const MAX_PRICE_FEED_AGE: i64 = 86400;
 
 // Default SOL price in case of stale feed ($100 USD per SOL)
-const DEFAULT_SOL_PRICE: i128 = 100_00000000;
+const DEFAULT_SOL_PRICE: i128 = 100_00000000; // $100 with 8 decimals
 
 // Maximum number of upline accounts that can be processed in a single transaction
 const MAX_UPLINE_DEPTH: usize = 6;
 
-// NOVA CONSTANTE: Tabela de distribuição de 36 semanas
-const WEEKLY_DISTRIBUTIONS: [u64; 36] = [
-    240_081,    // Semana 1: 1.1546%
-    259_617,    // Semana 2: 1.2485%
-    279_997,    // Semana 3: 1.3458%
-    301_268,    // Semana 4: 1.4492%
-    323_478,    // Semana 5: 1.5557%
-    346_675,    // Semana 6: 1.6668%
-    370_908,    // Semana 7: 1.7838%
-    396_224,    // Semana 8: 1.9055%
-    422_672,    // Semana 9: 2.0331%
-    450_303,    // Semana 10: 2.1656%
-    479_169,    // Semana 11: 2.3035%
-    509_323,    // Semana 12: 2.4487%
-    540_819,    // Semana 13: 2.5993%
-    573_712,    // Semana 14: 2.7595%
-    608_059,    // Semana 15: 2.9256%
-    643_919,    // Semana 16: 3.0967%
-    681_351,    // Semana 17: 3.2775%
-    720_417,    // Semana 18: 3.4645%
-    761_179,    // Semana 19: 3.6615%
-    803_704,    // Semana 20: 3.8675%
-    848_057,    // Semana 21: 4.0784%
-    894_308,    // Semana 22: 4.3009%
-    942_525,    // Semana 23: 4.5324%
-    992_783,    // Semana 24: 4.7749%
-    1_045_139,  // Semana 25: 5.0266%
-    1_099_731,  // Semana 26: 5.3388%
-    1_156_576,  // Semana 27: 5.6595%
-    1_215_747,  // Semana 28: 5.9921%
-    1_317_311,  // Semana 29: 6.3379%
-    1_391_342,  // Semana 30: 6.6891%
-    1_467_912,  // Semana 31: 7.0605%
-    1_547_090,  // Semana 32: 7.4370%
-    1_628_943,  // Semana 33: 7.8357%
-    1_713_547,  // Semana 34: 8.2437%
-    1_800_978,  // Semana 35: 8.6622%
-    1_891_317,  // Semana 36: 9.0926%
-];
-
-// Função para obter distribuição da semana
-fn get_week_distribution(week: u8) -> u64 {
-    if week == 0 || week > 36 {
-        return 0; // Programa finalizado
-    }
-    WEEKLY_DISTRIBUTIONS[(week - 1) as usize]
-}
-
-// ===== MÓDULO DE ENDEREÇOS VERIFICADOS =====
+// Constants for strict address verification
 pub mod verified_addresses {
     use solana_program::pubkey::Pubkey;
  
-    // Pool address
+    // Pool address for swaps
     pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
-    
-    // Vault A addresses (DONUT token vault)
-    pub static A_VAULT: Pubkey = solana_program::pubkey!("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN");
-    pub static A_VAULT_LP: Pubkey = solana_program::pubkey!("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
-    pub static A_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("6f2FVX5UT5uBtgknc8fDj119Z7DQoLJeKRmBq7j1zsVi");
-    pub static A_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj");
-    
-    // Meteora pool addresses
-    pub static B_VAULT_LP: Pubkey = solana_program::pubkey!("HJNs8hPTzs9i6AVFkRDDMFVEkrrUoV7H7LDZHdCWvxn7");
-    pub static B_VAULT: Pubkey = solana_program::pubkey!("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT");
-    pub static B_TOKEN_VAULT: Pubkey = solana_program::pubkey!("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG");
-    pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
     pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
@@ -114,10 +52,8 @@ pub mod verified_addresses {
     pub static CHAINLINK_PROGRAM: Pubkey = solana_program::pubkey!("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
     pub static SOL_USD_FEED: Pubkey = solana_program::pubkey!("99B2bTijsU6f1GCT73HmdR7HCFFjGMBcPZY6jZ96ynrR");
     
-    // CRITICAL SECURITY ADDRESSES 
-    pub static METEORA_VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
-    pub static METEORA_AMM_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
-    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("BBJi5yNpb9oRi1ZA6SqVmQwZ8wbekuPcwUXZZNhrpCvh");
+    // Meteora swap program
+    pub static METEORA_SWAP_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
 }
 
 // Admin account addresses
@@ -128,89 +64,7 @@ pub mod admin_addresses {
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
 }
 
-// ===== ESTRUTURAS DE DADOS METEORA (MANTIDAS) =====
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
-pub struct VaultBumps {
-    pub vault_bump: u8,
-    pub token_vault_bump: u8,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
-pub struct LockedProfitTracker {
-    pub last_updated_locked_profit: u64,
-    pub last_report: u64,
-    pub locked_profit_degradation: u64,
-}
-
-#[account]
-#[derive(Debug)]
-pub struct Vault {
-    pub enabled: u8,
-    pub bumps: VaultBumps,
-    pub total_amount: u64,
-    pub token_vault: Pubkey,
-    pub fee_vault: Pubkey,
-    pub token_mint: Pubkey,
-    pub lp_mint: Pubkey,
-    pub strategies: [Pubkey; 30],
-    pub base: Pubkey,
-    pub admin: Pubkey,
-    pub operator: Pubkey,
-    pub locked_profit_tracker: LockedProfitTracker,
-}
-
-impl Vault {
-    pub fn get_amount_by_share(
-        &self,
-        current_time: u64,
-        share: u64,
-        total_supply: u64,
-    ) -> Option<u64> {
-        if total_supply == 0 {
-            return Some(0);
-        }
-        
-        let total_amount = self.get_unlocked_amount(current_time)?;
-        
-        u64::try_from(
-            u128::from(share)
-                .checked_mul(u128::from(total_amount))?
-                .checked_div(u128::from(total_supply))?,
-        )
-        .ok()
-    }
-    
-    pub fn get_unlocked_amount(&self, current_time: u64) -> Option<u64> {
-        self.total_amount.checked_sub(
-            self.locked_profit_tracker
-                .calculate_locked_profit(current_time)?,
-        )
-    }
-}
-
-impl LockedProfitTracker {
-    pub fn calculate_locked_profit(&self, current_time: u64) -> Option<u64> {
-        const LOCKED_PROFIT_DEGRADATION_DENOMINATOR: u128 = 1_000_000_000_000;
-        
-        let duration = u128::from(current_time.checked_sub(self.last_report)?);
-        let locked_profit_degradation = u128::from(self.locked_profit_degradation);
-        let locked_fund_ratio = duration.checked_mul(locked_profit_degradation)?;
-
-        if locked_fund_ratio > LOCKED_PROFIT_DEGRADATION_DENOMINATOR {
-            return Some(0);
-        }
-        
-        let locked_profit = u128::from(self.last_updated_locked_profit);
-        let locked_profit = locked_profit
-            .checked_mul(LOCKED_PROFIT_DEGRADATION_DENOMINATOR.checked_sub(locked_fund_ratio)?)?
-            .checked_div(LOCKED_PROFIT_DEGRADATION_DENOMINATOR)?;
-            
-        u64::try_from(locked_profit).ok()
-    }
-}
-
-// ===== ESTRUTURAS METEORA AMM =====
+// ===== METEORA DYNAMIC AMM STRUCTURES =====
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
 pub enum PoolType {
@@ -316,81 +170,38 @@ pub struct Pool {
     pub curve_type: CurveType,
 }
 
-// ===== NOVAS ESTRUTURAS DE DADOS =====
+// ===== PROGRAM STRUCTURES =====
 
-// NOVA: Snapshot de uma semana fechada
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct WeekSnapshot {
-    pub week_number: u8,                        // Número da semana (1-36)
-    pub total_matrices: u64,                    // Total de matrizes completadas na semana
-    pub donut_distributed: u64,                 // DONUT total distribuído nesta semana
-    pub donut_per_matrix: u64,                  // DONUT por matriz desta semana
-    pub week_end_timestamp: i64,                // Timestamp quando a semana fechou
-}
-
-// NOVA: Dados semanais do usuário
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
-pub struct UserWeekData {
-    pub week_number: u8,                        // Número da semana
-    pub matrices_completed: u64,                // Matrizes completadas pelo usuário nesta semana
-}
-
-// MODIFICADO: Program state expandido para airdrop
+// Program state structure
 #[account]
 pub struct ProgramState {
-    // === CONTROLE ADMINISTRATIVO (MANTIDO) ===
     pub owner: Pubkey,
     pub multisig_treasury: Pubkey,
-    pub is_locked: bool,                        // Proteção reentrancy
-    
-    // === CONTADORES GLOBAIS (MANTIDO) ===
     pub next_upline_id: u32,
     pub next_chain_id: u32,
-    
-    // === NOVO: CONTROLE DE AIRDROP ===
-    pub current_week: u8,                       // Semana atual (1-36, depois 0 = finalizado)
-    pub total_matrices_this_week: u64,          // Total de matrizes completadas esta semana
-    pub program_start_timestamp: i64,           // Timestamp do início do programa
-    pub airdrop_active: bool,                   // Se o sistema de airdrop ainda está ativo
-    
-    // === NOVO: HISTÓRICO SEMANAL COMPLETO ===
-    pub closed_weeks: Vec<WeekSnapshot>,        // Snapshots das semanas fechadas (máximo 36)
+    pub is_locked: bool,
 }
 
 impl ProgramState {
-    pub const SIZE: usize = 
-        32 +        // owner
-        32 +        // multisig_treasury  
-        1 +         // is_locked
-        4 +         // next_upline_id
-        4 +         // next_chain_id
-        1 +         // current_week
-        8 +         // total_matrices_this_week
-        8 +         // program_start_timestamp
-        1 +         // airdrop_active
-        4 +         // Vec length prefix
-        (36 * 33) + // closed_weeks (36 semanas × 33 bytes por snapshot)
-        100;        // Buffer de segurança
-        
-    // Total: ~1,635 bytes
+    pub const SIZE: usize = 32 + 32 + 4 + 4 + 1;
 }
 
-// Structure to store complete information for each upline (MANTIDA)
+// Structure to store complete information for each upline
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
 pub struct UplineEntry {
     pub pda: Pubkey,       // PDA of the user account
     pub wallet: Pubkey,    // Original user wallet
 }
 
-// Referral upline structure (MANTIDA)
+// Referral upline structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct ReferralUpline {
     pub id: u32,
     pub depth: u8,
-    pub upline: Vec<UplineEntry>,
+    pub upline: Vec<UplineEntry>, // Stores UplineEntry with all information
 }
 
-// Referral matrix structure (MANTIDA)
+// Referral matrix structure
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default)]
 pub struct ReferralChain {
     pub id: u32,
@@ -398,572 +209,113 @@ pub struct ReferralChain {
     pub filled_slots: u8,
 }
 
-// MODIFICADO: User account expandido para airdrop
+// User account structure - REMOVED token fields
 #[account]
 #[derive(Default)]
 pub struct UserAccount {
-    // === DADOS BÁSICOS (MANTIDOS) ===
     pub is_registered: bool,
     pub referrer: Option<Pubkey>,
     pub owner_wallet: Pubkey,
     pub upline: ReferralUpline,
     pub chain: ReferralChain,
-    
-    // === RESERVAS FINANCEIRAS (MANTIDAS) ===
-    pub reserved_sol: u64,
-    pub reserved_tokens: u64,                   // Não usado mais, mas mantido para compatibilidade
-    
-    // === NOVO: SISTEMA DE MATRIZES E AIRDROP ===
-    pub completed_matrices_total: u64,          // Contador histórico total de matrizes completadas
-    pub weekly_matrices: Vec<UserWeekData>,     // Histórico semanal do usuário (máximo 36 semanas)
-    pub total_donut_earned: u64,                // Total de DONUT ganho em airdrops
-    pub total_donut_claimed: u64,               // Total de DONUT já coletado via claim
-    pub last_processed_week: u8,                // Última semana que foi processada para este usuário
+    pub reserved_sol: u64,  // Only SOL reservation
 }
 
 impl UserAccount {
-    pub const SIZE: usize = 
-        1 +         // is_registered
-        33 +        // Option<Pubkey> referrer (1 byte discriminant + 32 bytes pubkey)
-        32 +        // owner_wallet
-        500 +       // upline (estimativa para 6 níveis)
-        50 +        // chain
-        8 +         // reserved_sol
-        8 +         // reserved_tokens
-        8 +         // completed_matrices_total
-        4 +         // Vec length prefix para weekly_matrices
-        (36 * 9) +  // weekly_matrices (36 semanas × 9 bytes por entrada)
-        8 +         // total_donut_earned
-        8 +         // total_donut_claimed
-        1 +         // last_processed_week
-        100;        // Buffer de segurança
-        
-    // Total: ~1,100 bytes
-    
-    // NOVA: Função para calcular DONUT disponível para claim
-    pub fn get_claimable_donut(&self) -> u64 {
-        self.total_donut_earned.saturating_sub(self.total_donut_claimed)
-    }
-    
-    // NOVA: Função para adicionar dados semanais
-    pub fn add_weekly_data(&mut self, week_data: UserWeekData) -> Result<()> {
-        if self.weekly_matrices.len() >= 36 {
-            return Ok(()); // Silencioso após 36 semanas
-        }
-        
-        // Verifica se já existe entrada para esta semana
-        if let Some(existing) = self.weekly_matrices.iter_mut()
-            .find(|w| w.week_number == week_data.week_number) {
-            existing.matrices_completed = existing.matrices_completed
-                .checked_add(week_data.matrices_completed)
-                .ok_or(ErrorCode::ArithmeticOverflow)?;
-        } else {
-            self.weekly_matrices.push(week_data);
-        }
-        
-        Ok(())
-    }
+    pub const SIZE: usize = 1 + // is_registered
+                           1 + 32 + // Option<Pubkey> (1 for is_some + 32 for Pubkey)
+                           32 + // owner_wallet
+                           4 + 1 + 4 + (MAX_UPLINE_DEPTH * (32 + 32)) + // ReferralUpline
+                           4 + (3 * (1 + 32)) + 1 + // ReferralChain
+                           8; // reserved_sol (removed reserved_tokens)
 }
 
-// ===== CÓDIGOS DE ERRO EXPANDIDOS =====
-
+// Error codes
 #[error_code]
 pub enum ErrorCode {
-    // === ERROS EXISTENTES (MANTIDOS) ===
-    #[msg("Invalid vault B address")]
-    InvalidVaultBAddress,
-    #[msg("Invalid vault B token vault address")]
-    InvalidVaultBTokenVaultAddress,
-    #[msg("Invalid vault B LP mint address")]
-    InvalidVaultBLpMintAddress,
-    #[msg("Invalid vault A LP address")]
-    InvalidVaultALpAddress,
-    #[msg("Invalid vault A LP mint address")]
-    InvalidVaultALpMintAddress,
-    #[msg("Invalid token A vault address")]
-    InvalidTokenAVaultAddress,
     #[msg("Referrer account is not registered")]
     ReferrerNotRegistered,
+    
     #[msg("Not authorized")]
     NotAuthorized,
+
     #[msg("Slot account not owned by program")]
     InvalidSlotOwner,
+
     #[msg("Slot account not registered")]
     SlotNotRegistered,
+
     #[msg("Insufficient deposit amount")]
     InsufficientDeposit,
-    #[msg("Failed to process deposit to pool")]
-    DepositToPoolFailed,
+
+    #[msg("Failed to process swap")]
+    SwapFailed,
+
     #[msg("Failed to process SOL reserve")]
     SolReserveFailed,
+
     #[msg("Failed to process referrer payment")]
     ReferrerPaymentFailed,
-    #[msg("Failed to wrap SOL to WSOL")]
-    WrapSolFailed,
-    #[msg("Failed to unwrap WSOL to SOL")]
-    UnwrapSolFailed,
-    #[msg("Failed to mint tokens")]
-    TokenMintFailed,
-    #[msg("Failed to transfer tokens")]
-    TokenTransferFailed,
+
     #[msg("Invalid pool address")]
     InvalidPoolAddress,
-    #[msg("Invalid vault address")]
-    InvalidVaultAddress,
+    
     #[msg("Invalid token mint address")]
     InvalidTokenMintAddress,
+    
     #[msg("Invalid token account")]
     InvalidTokenAccount,
+    
     #[msg("Invalid wallet for ATA")]
     InvalidWalletForATA,
+
     #[msg("Missing required account for upline")]
     MissingUplineAccount,
+    
     #[msg("Payment wallet is not a system account")]
     PaymentWalletInvalid,
+    
     #[msg("Token account is not a valid ATA")]
     TokenAccountInvalid,
-    #[msg("Missing vault A accounts")]
-    MissingVaultAAccounts,
+
     #[msg("Failed to read price feed")]
     PriceFeedReadFailed,
+    
     #[msg("Price feed too old")]
     PriceFeedTooOld,
+    
     #[msg("Invalid Chainlink program")]
     InvalidChainlinkProgram,
+    
     #[msg("Invalid price feed")]
     InvalidPriceFeed,
-    #[msg("Failed to read Meteora pool data")]
-    PriceMeteoraReadFailed,
-    #[msg("Meteora pool calculation overflow")]
-    MeteoraCalculationOverflow,
-    #[msg("Invalid vault program address")]
-    InvalidVaultProgram,
-    #[msg("Invalid program token vault address")]
-    InvalidProgramTokenVault,
+
+    #[msg("Invalid swap program address")]
+    InvalidSwapProgram,
+    
     #[msg("Slot 3 registration requires upline accounts for recursion")]
     Slot3RequiresUplineAccounts,
-    #[msg("Deposit was not fully processed - registration aborted")]
-    DepositNotProcessed,
+    
+    #[msg("Swap was not fully processed - registration aborted")]
+    SwapNotProcessed,
+    
     #[msg("Upline account does not belong to referrer chain")]
     InvalidUplineAccount,
+    
     #[msg("Upline accounts are not in correct order")]
     InvalidUplineOrder,
+
     #[msg("Transaction locked to prevent reentrancy")]
     ReentrancyLock,
-    
-    // === NOVOS ERROS PARA AIRDROP E SWAP ===
-    #[msg("Airdrop program has finished (36 weeks completed)")]
-    AirdropProgramFinished,
-    #[msg("Nothing to claim - no DONUT available")]
-    NothingToClaim,
-    #[msg("Arithmetic overflow detected")]
-    ArithmeticOverflow,
-    #[msg("Arithmetic underflow detected")]
-    ArithmeticUnderflow,
-    #[msg("No matrices completed in the week")]
-    NoMatricesCompleted,
-    #[msg("Invalid program start time")]
-    InvalidStartTime,
-    #[msg("Program has expired")]
-    ProgramExpired,
-    #[msg("Failed to swap SOL to DONUT")]
-    SwapFailed,
-    #[msg("Failed to burn DONUT tokens")]
-    BurnFailed,
-    #[msg("Invalid Meteora AMM program")]
-    InvalidMeteoraAmmProgram,
-    #[msg("Insufficient vault balance")]
-    InsufficientVaultBalance,
-    #[msg("Week calculation failed")]
-    WeekCalculationFailed,
-    #[msg("Invalid slot")]
-    InvalidSlot,
-    #[msg("Recursion depth exceeded")]
-    RecursionDepthExceeded,
-    #[msg("Upline processing failed")]
-    UplineProcessingFailed,
 }
 
-// ===== EVENTOS =====
-
-// Evento existente mantido
+// Event structure for slot filling
 #[event]
 pub struct SlotFilled {
     pub slot_idx: u8,
     pub chain_id: u32,
     pub user: Pubkey,
     pub owner: Pubkey,
-}
-
-// NOVOS EVENTOS
-#[event]
-pub struct WeekClosed {
-    pub week_number: u8,
-    pub total_matrices: u64,
-    pub donut_distributed: u64,
-    pub donut_per_matrix: u64,
-}
-
-#[event]
-pub struct AirdropClaimed {
-    pub user: Pubkey,
-    pub amount: u64,
-    pub total_earned: u64,
-    pub total_claimed: u64,
-}
-
-#[event]
-pub struct MatrixCompleted {
-    pub user: Pubkey,
-    pub week_number: u8,
-    pub total_matrices: u64,
-}
-
-#[event]
-pub struct DonutSwappedAndBurned {
-    pub user: Pubkey,
-    pub sol_amount: u64,
-    pub donut_amount: u64,
-    pub week_number: u8,
-}
-
-#[event]
-pub struct AirdropProgramFinished {
-    pub final_week: u8,
-    pub total_donut_distributed: u64,
-}
-
-#[event]
-pub struct RecursionProcessed {
-    pub current_user: Pubkey,
-    pub upline_user: Pubkey,
-    pub slot_allocated: u8,
-    pub level: u8,
-}
-
-#[event]
-pub struct DepositAllocated {
-    pub user: Pubkey,
-    pub slot: u8,
-    pub amount: u64,
-    pub allocation_type: String,
-}
-
-// ===== ESTRUTURA DECIMAL PARA DISPLAY =====
-
-#[derive(Default)]
-pub struct Decimal {
-    pub value: i128,
-    pub decimals: u32,
-}
-
-impl Decimal {
-    pub fn new(value: i128, decimals: u32) -> Self {
-        Decimal { value, decimals }
-    }
-}
-
-impl std::fmt::Display for Decimal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut scaled_val = self.value.to_string();
-        if scaled_val.len() <= self.decimals as usize {
-            scaled_val.insert_str(
-                0,
-                &vec!["0"; self.decimals as usize - scaled_val.len()].join(""),
-            );
-            scaled_val.insert_str(0, "0.");
-        } else {
-            scaled_val.insert(scaled_val.len() - self.decimals as usize, '.');
-        }
-        f.write_str(&scaled_val)
-    }
-}
-
-// ===== FUNÇÕES AUXILIARES =====
-
-// NOVA: Calcular semana atual baseada no timestamp de início
-fn calculate_current_week(start_timestamp: i64) -> Result<u8> {
-    let clock = Clock::get()?;
-    let current_timestamp = clock.unix_timestamp;
-    
-    if current_timestamp < start_timestamp {
-        return Ok(0); // Programa ainda não começou
-    }
-    
-    let elapsed_seconds = current_timestamp - start_timestamp;
-    let elapsed_weeks = (elapsed_seconds / (7 * 24 * 60 * 60)) + 1;
-    
-    if elapsed_weeks > 36 {
-        return Ok(0); // Programa finalizado
-    }
-    
-    Ok(elapsed_weeks as u8)
-}
-
-// NOVA: Verificar e processar mudança de semana
-fn check_and_process_week_change(state: &mut ProgramState) -> Result<bool> {
-    let new_week = calculate_current_week(state.program_start_timestamp)?;
-    
-    // Se programa finalizou (passou de 36 semanas)
-    if new_week == 0 && state.current_week > 0 {
-        state.airdrop_active = false;
-        state.current_week = 0;
-        
-        emit!(AirdropProgramFinished {
-            final_week: 36,
-            total_donut_distributed: WEEKLY_DISTRIBUTIONS.iter().sum(),
-        });
-        
-        msg!("Airdrop program finished after 36 weeks");
-        return Ok(true);
-    }
-    
-    // Se mudou de semana (e ainda está ativo)
-    if new_week != state.current_week && new_week > 0 {
-        // Processa semana anterior se tinha matrizes
-        if state.current_week > 0 && state.total_matrices_this_week > 0 {
-            let week_donut = get_week_distribution(state.current_week);
-            let donut_per_matrix = week_donut
-                .checked_div(state.total_matrices_this_week)
-                .ok_or(ErrorCode::NoMatricesCompleted)?;
-            
-            // Cria snapshot da semana fechada
-            let snapshot = WeekSnapshot {
-                week_number: state.current_week,
-                total_matrices: state.total_matrices_this_week,
-                donut_distributed: week_donut,
-                donut_per_matrix,
-                week_end_timestamp: Clock::get()?.unix_timestamp,
-            };
-            
-            // Adiciona ao histórico (máximo 36)
-            if state.closed_weeks.len() < 36 {
-                state.closed_weeks.push(snapshot.clone());
-                
-                emit!(WeekClosed {
-                    week_number: snapshot.week_number,
-                    total_matrices: snapshot.total_matrices,
-                    donut_distributed: snapshot.donut_distributed,
-                    donut_per_matrix: snapshot.donut_per_matrix,
-                });
-                
-                msg!("Week {} closed: {} matrices, {} DONUT total, {} per matrix", 
-                     state.current_week, 
-                     state.total_matrices_this_week, 
-                     week_donut, 
-                     donut_per_matrix);
-            }
-        }
-        
-        // Avança para nova semana
-        state.current_week = new_week;
-        state.total_matrices_this_week = 0;
-        
-        return Ok(true); // Houve mudança
-    }
-    
-    Ok(false) // Sem mudança
-}
-
-// NOVA: Processar semanas pendentes do usuário
-fn process_user_pending_weeks(
-    user: &mut UserAccount, 
-    state: &ProgramState
-) -> Result<()> {
-    let mut total_earned = 0u64;
-    
-    // Processa cada semana fechada que o usuário não foi processado ainda
-    for week_snapshot in &state.closed_weeks {
-        if week_snapshot.week_number > user.last_processed_week {
-            
-            // Encontra quantas matrizes o usuário completou nesta semana
-            let user_matrices = user.weekly_matrices.iter()
-                .find(|w| w.week_number == week_snapshot.week_number)
-                .map(|w| w.matrices_completed)
-                .unwrap_or(0);
-            
-            if user_matrices > 0 {
-                let earned = user_matrices
-                    .checked_mul(week_snapshot.donut_per_matrix)
-                    .ok_or(ErrorCode::ArithmeticOverflow)?;
-                
-                total_earned = total_earned
-                    .checked_add(earned)
-                    .ok_or(ErrorCode::ArithmeticOverflow)?;
-                
-                msg!("Week {} processed for user: {} matrices × {} DONUT = {} earned", 
-                     week_snapshot.week_number, 
-                     user_matrices, 
-                     week_snapshot.donut_per_matrix, 
-                     earned);
-            }
-        }
-    }
-    
-    // Atualiza totais do usuário
-    if total_earned > 0 {
-        user.total_donut_earned = user.total_donut_earned
-            .checked_add(total_earned)
-            .ok_or(ErrorCode::ArithmeticOverflow)?;
-    }
-    
-    user.last_processed_week = state.current_week;
-    
-    Ok(())
-}
-
-// NOVA: Registrar conclusão de matrix para airdrop
-fn record_matrix_completion(
-    user: &mut UserAccount, 
-    state: &mut ProgramState
-) -> Result<()> {
-    // Verifica se airdrop ainda está ativo
-    if !state.airdrop_active || state.current_week == 0 {
-        return Ok(()); // Programa finalizado, não registra mais
-    }
-    
-    // Incrementa contador global
-    state.total_matrices_this_week = state.total_matrices_this_week
-        .checked_add(1)
-        .ok_or(ErrorCode::ArithmeticOverflow)?;
-    
-    // Incrementa contador total do usuário
-    user.completed_matrices_total = user.completed_matrices_total
-        .checked_add(1)
-        .ok_or(ErrorCode::ArithmeticOverflow)?;
-    
-    // Registra na semana atual do usuário
-    let current_week = state.current_week;
-    
-    let week_data = UserWeekData {
-        week_number: current_week,
-        matrices_completed: 1,
-    };
-    
-    user.add_weekly_data(week_data)?;
-    
-    emit!(MatrixCompleted {
-        user: user.owner_wallet,
-        week_number: current_week,
-        total_matrices: user.completed_matrices_total,
-    });
-    
-    msg!("Matrix completed for user in week {}: {} total matrices", 
-         current_week, user.completed_matrices_total);
-    
-    Ok(())
-}
-
-// NOVA SIMPLIFICADA: Swap SOL para DONUT direto no vault principal
-fn meteora_swap_sol_to_donut_direct<'info>(
-    sol_amount: u64,
-    user_wallet: &AccountInfo<'info>,
-    program_token_vault: &Account<'info, TokenAccount>,
-    vault_authority: &AccountInfo<'info>,
-    pool: &AccountInfo<'info>,
-    a_vault: &AccountInfo<'info>,
-    b_vault: &AccountInfo<'info>,
-    a_token_vault: &AccountInfo<'info>,
-    b_token_vault: &AccountInfo<'info>,
-    a_vault_lp: &AccountInfo<'info>,
-    b_vault_lp: &AccountInfo<'info>,
-    a_vault_lp_mint: &AccountInfo<'info>,
-    b_vault_lp_mint: &AccountInfo<'info>,
-    amm_program: &AccountInfo<'info>,
-    vault_program: &AccountInfo<'info>,
-    token_program: &AccountInfo<'info>,
-) -> Result<u64> {
-    let initial_balance = program_token_vault.amount;
-    
-    // Instrução de swap do Meteora AMM
-    let mut swap_data = Vec::with_capacity(24);
-    swap_data.extend_from_slice(&[248, 198, 158, 145, 225, 117, 135, 200]); // Discriminador swap
-    swap_data.extend_from_slice(&sol_amount.to_le_bytes());     // Quantidade de input
-    swap_data.extend_from_slice(&0u64.to_le_bytes());          // Quantidade mínima de output
-    
-    let swap_accounts = vec![
-        pool.clone(),
-        user_wallet.clone(),                    // Fonte de SOL (signer)
-        program_token_vault.to_account_info(),  // Destino de DONUT
-        vault_authority.clone(),                // Authority para o vault
-        a_vault.clone(),
-        b_vault.clone(),
-        a_token_vault.clone(),
-        b_token_vault.clone(),
-        a_vault_lp.clone(),
-        b_vault_lp.clone(),
-        a_vault_lp_mint.clone(),
-        b_vault_lp_mint.clone(),
-        vault_program.clone(),
-        token_program.clone(),
-    ];
-    
-    let swap_instruction = solana_program::instruction::Instruction {
-        program_id: amm_program.key(),
-        accounts: swap_accounts.iter().enumerate().map(|(i, account)| {
-            match i {
-                0 => solana_program::instruction::AccountMeta::new(account.key(), false), // pool
-                1 => solana_program::instruction::AccountMeta::new(account.key(), true),  // user (signer)
-                2 => solana_program::instruction::AccountMeta::new(account.key(), false), // destination
-                3 => solana_program::instruction::AccountMeta::new_readonly(account.key(), false), // authority
-                _ => solana_program::instruction::AccountMeta::new(account.key(), false),
-            }
-        }).collect(),
-        data: swap_data,
-    };
-    
-    solana_program::program::invoke(
-        &swap_instruction,
-        &swap_accounts,
-    ).map_err(|e| {
-        msg!("Meteora swap failed: {:?}", e);
-        error!(ErrorCode::SwapFailed)
-    })?;
-    
-    // Recalcula saldo para determinar quanto DONUT foi recebido
-    let current_balance = program_token_vault.amount;
-    let donut_received = current_balance.saturating_sub(initial_balance);
-    
-    msg!("Swapped {} SOL for {} DONUT via vault principal", sol_amount, donut_received);
-    Ok(donut_received)
-}
-
-// NOVA SIMPLIFICADA: Queimar DONUT direto do vault principal
-fn burn_donut_from_vault<'info>(
-    program_token_vault: &Account<'info, TokenAccount>,
-    donut_mint: &AccountInfo<'info>,
-    vault_authority: &AccountInfo<'info>,
-    token_program: &AccountInfo<'info>,
-    amount: u64,
-    authority_seeds: &[&[&[u8]]],
-) -> Result<()> {
-    let burn_instruction = spl_token::instruction::burn(
-        &spl_token::id(),
-        &program_token_vault.key(),
-        donut_mint.key,
-        vault_authority.key,
-        &[],
-        amount,
-    ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-
-    let burn_accounts = vec![
-        program_token_vault.to_account_info(),
-        donut_mint.clone(),
-        vault_authority.clone(),
-        token_program.clone(),
-    ];
-
-    solana_program::program::invoke_signed(
-        &burn_instruction,
-        &burn_accounts,
-        authority_seeds,
-    ).map_err(|e| {
-        msg!("DONUT burn failed: {:?}", e);
-        error!(ErrorCode::BurnFailed)
-    })?;
-
-    msg!("Burned {} DONUT tokens from vault principal", amount);
-    Ok(())
 }
 
 // Function to get SOL/USD price from Chainlink feed
@@ -987,7 +339,7 @@ fn get_sol_usd_price<'info>(
     Ok((round.answer, decimals.into(), current_timestamp, round.timestamp.into()))
 }
 
-// Function to calculate minimum SOL deposit based on USD price
+// Function to calculate minimum SOL deposit based on USD price - FIXED to use integer math
 fn calculate_minimum_sol_deposit<'info>(
     chainlink_feed: &AccountInfo<'info>, 
     chainlink_program: &AccountInfo<'info>
@@ -1002,10 +354,14 @@ fn calculate_minimum_sol_deposit<'info>(
         price
     };
     
-    let price_f64 = sol_price_per_unit as f64 / 10f64.powf(decimals as f64);
-    let minimum_usd_f64 = MINIMUM_USD_DEPOSIT as f64 / 1_00000000.0;
-    let minimum_sol_f64 = minimum_usd_f64 / price_f64;
-    let minimum_lamports = (minimum_sol_f64 * 1_000_000_000.0) as u64;
+    // Use integer arithmetic only - no floats
+    let sol_price_lamports = sol_price_per_unit as u64; // Price in 8 decimals
+    let minimum_usd_lamports = MINIMUM_USD_DEPOSIT; // $10 in 8 decimals
+    
+    // Calculate: (minimum_usd * 10^9) / sol_price
+    // Both are in 8 decimals, so we need to adjust for lamports (10^9)
+    let numerator = minimum_usd_lamports * 1_000_000_000; // Convert to lamports scale
+    let minimum_lamports = numerator / sol_price_lamports;
     
     Ok(minimum_lamports)
 }
@@ -1047,33 +403,75 @@ fn verify_ata_strict<'info>(
     Ok(())
 }
 
-// Function to verify all fixed addresses at once
-fn verify_all_fixed_addresses(
-    pool: &Pubkey,
-    b_vault: &Pubkey,        
-    b_token_vault: &Pubkey,  
-    b_vault_lp_mint: &Pubkey, 
-    b_vault_lp: &Pubkey,
-    token_mint: &Pubkey,
-    wsol_mint: &Pubkey,
+// Function to verify Chainlink addresses
+fn verify_chainlink_addresses<'info>(
+    chainlink_program: &Pubkey,
+    chainlink_feed: &Pubkey,
 ) -> Result<()> {
-    verify_address_strict(pool, &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
-    verify_address_strict(b_vault_lp, &verified_addresses::B_VAULT_LP, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(b_vault, &verified_addresses::B_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(b_token_vault, &verified_addresses::B_TOKEN_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(b_vault_lp_mint, &verified_addresses::B_VAULT_LP_MINT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(token_mint, &verified_addresses::TOKEN_MINT, ErrorCode::InvalidTokenMintAddress)?;
-    verify_address_strict(wsol_mint, &verified_addresses::WSOL_MINT, ErrorCode::InvalidTokenMintAddress)?;
+    verify_address_strict(chainlink_program, &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
+    verify_address_strict(chainlink_feed, &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
     
     Ok(())
 }
 
-// Function to verify if an account is a valid wallet (system account)
-fn verify_wallet_is_system_account<'info>(wallet: &AccountInfo<'info>) -> Result<()> {
-    if wallet.owner != &solana_program::system_program::ID {
-        return Err(error!(ErrorCode::PaymentWalletInvalid));
-    }
+// Function to process SOL->DONUT swap using Meteora
+fn process_sol_to_donut_swap<'info>(
+    user_wallet: &AccountInfo<'info>,
+    user_donut_account: &AccountInfo<'info>,
+    pool: &AccountInfo<'info>,
+    token_a_vault: &AccountInfo<'info>,
+    token_b_vault: &AccountInfo<'info>,
+    swap_program: &AccountInfo<'info>,
+    token_program: &Program<'info, Token>,
+    system_program: &Program<'info, System>,
+    sol_amount: u64,
+) -> Result<()> {
+    // Verify swap program
+    verify_address_strict(&swap_program.key(), &verified_addresses::METEORA_SWAP_PROGRAM, ErrorCode::InvalidSwapProgram)?;
     
+    // Verify pool
+    verify_address_strict(&pool.key(), &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
+    
+    let swap_accounts = [
+        pool.clone(),
+        user_wallet.clone(),
+        token_a_vault.clone(), // DONUT vault
+        token_b_vault.clone(), // SOL vault
+        user_donut_account.clone(),
+        user_wallet.clone(), // SOL source
+        token_program.to_account_info(),
+        system_program.to_account_info(),
+    ];
+
+    // Meteora swap instruction data
+    // This is a placeholder - you need to get the actual instruction discriminator from Meteora
+    let mut swap_data = Vec::with_capacity(24);
+    swap_data.extend_from_slice(&[248, 198, 158, 145, 225, 117, 135, 200]); // Swap discriminator (placeholder)
+    swap_data.extend_from_slice(&sol_amount.to_le_bytes()); // Amount in
+    swap_data.extend_from_slice(&0u64.to_le_bytes()); // Minimum amount out
+
+    solana_program::program::invoke(
+        &solana_program::instruction::Instruction {
+            program_id: swap_program.key(),
+            accounts: swap_accounts.iter().enumerate().map(|(i, a)| {
+                match i {
+                    0 => solana_program::instruction::AccountMeta::new(a.key(), false), // pool
+                    1 => solana_program::instruction::AccountMeta::new_readonly(a.key(), true), // user (signer)
+                    2 | 3 => solana_program::instruction::AccountMeta::new(a.key(), false), // vaults
+                    4 => solana_program::instruction::AccountMeta::new(a.key(), false), // user donut account
+                    5 => solana_program::instruction::AccountMeta::new(a.key(), true), // user wallet (SOL source)
+                    _ => solana_program::instruction::AccountMeta::new_readonly(a.key(), false), // programs
+                }
+            }).collect::<Vec<solana_program::instruction::AccountMeta>>(),
+            data: swap_data,
+        },
+        &swap_accounts,
+    ).map_err(|e| {
+        msg!("SOL to DONUT swap failed: {:?}", e);
+        error!(ErrorCode::SwapFailed)
+    })?;
+    
+    msg!("SOL to DONUT swap completed: {} SOL", sol_amount);
     Ok(())
 }
 
@@ -1085,13 +483,13 @@ fn process_reserve_sol<'info>(
 ) -> Result<()> {
     let ix = solana_program::system_instruction::transfer(
         &from.key(),
-        &to.key(),
+        &to.to_account_info().key(),
         amount
     );
     
     solana_program::program::invoke(
         &ix,
-        &[from.clone(), to.clone()],
+        &[from.clone(), to.to_account_info()],
     ).map_err(|e| {
         msg!("Reserve SOL failed: {:?}", e);
         error!(ErrorCode::SolReserveFailed)
@@ -1101,14 +499,16 @@ fn process_reserve_sol<'info>(
     Ok(())
 }
 
-// Function process_pay_referrer
+// Function process_pay_referrer with explicit lifetimes
 fn process_pay_referrer<'info>(
     from: &AccountInfo<'info>,
     to: &AccountInfo<'info>,
     amount: u64,
     signer_seeds: &[&[&[u8]]],
 ) -> Result<()> {
-    verify_wallet_is_system_account(to)?;
+    if to.owner != &solana_program::system_program::ID {
+        return Err(error!(ErrorCode::PaymentWalletInvalid));
+    }
     
     let ix = solana_program::system_instruction::transfer(
         &from.key(),
@@ -1133,51 +533,78 @@ fn process_pay_referrer<'info>(
     Ok(())
 }
 
-// Function to transfer tokens from vault to user
-pub fn process_transfer_tokens<'info>(
-    program_token_vault: &AccountInfo<'info>,
-    user_token_account: &AccountInfo<'info>,
-    vault_authority: &AccountInfo<'info>,
-    token_program: &Program<'info, Token>,
-    amount: u64,
-    authority_seeds: &[&[&[u8]]],
+fn validate_upline_accounts<'info>(
+    referrer: &Account<'_, UserAccount>,
+    upline_accounts: &[AccountInfo<'info>],
 ) -> Result<()> {
-    if user_token_account.owner != &spl_token::id() {
-        return Err(error!(ErrorCode::TokenAccountInvalid));
+    let expected_uplines = referrer.upline.upline.len();
+    
+    if upline_accounts.len() % 2 != 0 { // Changed from 3 to 2 (no token accounts)
+        msg!("ERROR: Upline accounts not in pairs: {}", upline_accounts.len());
+        return Err(error!(ErrorCode::MissingUplineAccount));
     }
     
-    let transfer_instruction = spl_token::instruction::transfer(
-        &token_program.key(),
-        &program_token_vault.key(),
-        &user_token_account.key(),
-        &vault_authority.key(),
-        &[],
-        amount
-    ).map_err(|_| error!(ErrorCode::TokenTransferFailed))?;
+    let pair_count = upline_accounts.len() / 2;
     
-    let mut transfer_accounts = Vec::with_capacity(4);
-    transfer_accounts.push(program_token_vault.clone());
-    transfer_accounts.push(user_token_account.clone());
-    transfer_accounts.push(vault_authority.clone());
-    transfer_accounts.push(token_program.to_account_info());
+    if pair_count != expected_uplines {
+        msg!(
+            "CRITICAL: Must send ALL uplines! Referrer has {} uplines, got {} pairs",
+            expected_uplines,
+            pair_count
+        );
+        return Err(error!(ErrorCode::InvalidUplineAccount));
+    }
     
-    solana_program::program::invoke_signed(
-        &transfer_instruction,
-        &transfer_accounts,
-        authority_seeds,
-    ).map_err(|e| {
-        msg!("Transfer tokens failed: {:?}", e);
-        error!(ErrorCode::TokenTransferFailed)
-    })?;
+    if expected_uplines == 0 {
+        msg!("Referrer has no uplines - this should not happen in SLOT 3 normal user");
+        return Ok(());
+    }
     
-    msg!("Tokens transferred: {}", amount);
+    msg!("Validating ALL {} upline pairs", pair_count);
+    
+    for i in 0..pair_count {
+        let base_idx = i * 2;
+        let upline_pda = &upline_accounts[base_idx];
+        let upline_wallet = &upline_accounts[base_idx + 1];
+        
+        let upline_entry_idx = expected_uplines - 1 - i;
+        let expected_upline = &referrer.upline.upline[upline_entry_idx];
+        
+        if upline_pda.key() != expected_upline.pda {
+            msg!(
+                "UPLINE PDA MISMATCH at position {}: Expected {}, Got {}", 
+                i, expected_upline.pda, upline_pda.key()
+            );
+            return Err(error!(ErrorCode::InvalidUplineAccount));
+        }
+        
+        if upline_wallet.key() != expected_upline.wallet {
+            msg!(
+                "UPLINE WALLET MISMATCH at position {}: Expected {}, Got {}", 
+                i, expected_upline.wallet, upline_wallet.key()
+            );
+            return Err(error!(ErrorCode::InvalidUplineAccount));
+        }
+        
+        if upline_pda.owner != &crate::ID {
+            return Err(error!(ErrorCode::InvalidSlotOwner));
+        }
+        
+        if upline_wallet.owner != &solana_program::system_program::ID {
+            return Err(error!(ErrorCode::PaymentWalletInvalid));
+        }
+        
+        msg!("✅ Upline {} validated: {}", i, upline_pda.key());
+    }
+    
+    msg!("🎯 ALL {} upline pairs validated successfully", pair_count);
     Ok(())
 }
 
 /// Process the direct referrer's matrix when a new user registers
-fn process_referrer_chain(
+fn process_referrer_chain<'info>(
    user_key: &Pubkey,
-   referrer: &mut Account<UserAccount>,
+   referrer: &mut Account<'_, UserAccount>,
    next_chain_id: u32,
 ) -> Result<(bool, Pubkey)> {
    let slot_idx = referrer.chain.filled_slots as usize;
@@ -1207,977 +634,462 @@ fn process_referrer_chain(
    Ok((false, referrer.key()))
 }
 
-// NOVA FUNÇÃO: Processar recursividade completa nos uplines (SIMPLIFICADA)
-fn process_upline_recursion<'info>(
-    deposit_amount: u64,
-    upline_accounts: &[AccountInfo<'info>],
-    state: &mut ProgramState,
-    // Contas para swap
-    program_token_vault: &Account<'info, TokenAccount>,
-    vault_authority: &AccountInfo<'info>,
-    vault_authority_bump: u8,
-    pool: &AccountInfo<'info>,
-    a_vault: &AccountInfo<'info>,
-    b_vault: &AccountInfo<'info>,
-    a_token_vault: &AccountInfo<'info>,
-    b_token_vault: &AccountInfo<'info>,
-    a_vault_lp: &AccountInfo<'info>,
-    b_vault_lp: &AccountInfo<'info>,
-    a_vault_lp_mint: &AccountInfo<'info>,
-    b_vault_lp_mint: &AccountInfo<'info>,
-    amm_program: &AccountInfo<'info>,
-    vault_program: &AccountInfo<'info>,
-    token_program: &AccountInfo<'info>,
-    donut_mint: &AccountInfo<'info>,
-    program_sol_vault: &AccountInfo<'info>,
-    program_sol_vault_bump: u8,
-) -> Result<bool> {
-    msg!("Starting upline recursion with {} SOL", deposit_amount);
-    
-    let current_deposit = deposit_amount;
-    let mut level = 0u8;
-    
-    // Processa todos os uplines fornecidos
-    for upline_account in upline_accounts.iter().take(MAX_UPLINE_DEPTH) {
-        level += 1;
-        
-        // Deserializa a conta do upline
-        let mut upline_data = match UserAccount::try_deserialize(&mut &upline_account.data.borrow()[..]) {
-            Ok(data) => data,
-            Err(_) => {
-                msg!("Failed to deserialize upline account at level {}", level);
-                continue; // Pula este upline e continua
-            }
-        };
-        
-        // Verifica se o upline está registrado
-        if !upline_data.is_registered {
-            msg!("Upline at level {} is not registered", level);
-            continue;
-        }
-        
-        // Processa airdrop pendente do upline
-        process_user_pending_weeks(&mut upline_data, state)?;
-        
-        // Verifica qual slot está disponível
-        let slot_idx = upline_data.chain.filled_slots as usize;
-        
-        match slot_idx {
-            0 => { // Slot 1 disponível - SWAP + BURN
-                msg!("Level {}: Allocating {} SOL to Slot 1 (swap+burn)", level, current_deposit);
-                
-                let donut_received = meteora_swap_sol_to_donut_direct(
-                    current_deposit,
-                    upline_account,
-                    program_token_vault,
-                    vault_authority,
-                    pool,
-                    a_vault,
-                    b_vault,
-                    a_token_vault,
-                    b_token_vault,
-                    a_vault_lp,
-                    b_vault_lp,
-                    a_vault_lp_mint,
-                    b_vault_lp_mint,
-                    amm_program,
-                    vault_program,
-                    token_program,
-                )?;
-                
-                burn_donut_from_vault(
-                    program_token_vault,
-                    donut_mint,
-                    vault_authority,
-                    token_program,
-                    donut_received,
-                    &[&[
-                        b"token_vault_authority".as_ref(),
-                        &[vault_authority_bump]
-                    ]],
-                )?;
-                
-                // Preenche o slot do upline
-                upline_data.chain.slots[0] = Some(upline_account.key());
-                upline_data.chain.filled_slots = 1;
-                
-                emit!(DepositAllocated {
-                    user: upline_account.key(),
-                    slot: 1,
-                    amount: current_deposit,
-                    allocation_type: "swap_burn".to_string(),
-                });
-                
-                emit!(RecursionProcessed {
-                    current_user: upline_account.key(),
-                    upline_user: upline_account.key(),
-                    slot_allocated: 1,
-                    level,
-                });
-                
-                // Serializa os dados de volta
-                upline_data.try_serialize(&mut &mut upline_account.data.borrow_mut()[..])?;
-                
-                msg!("Recursion completed at level {} - allocated to Slot 1", level);
-                return Ok(true); // Depósito foi alocado
-            }
-            
-            1 => { // Slot 2 disponível - RESERVA SOL
-                msg!("Level {}: Allocating {} SOL to Slot 2 (reserve)", level, current_deposit);
-                
-                // Reserva SOL no vault do programa
-                process_reserve_sol(
-                    upline_account,
-                    program_sol_vault,
-                    current_deposit
-                )?;
-                
-                // Atualiza dados do upline
-                upline_data.reserved_sol = current_deposit;
-                upline_data.chain.slots[1] = Some(upline_account.key());
-                upline_data.chain.filled_slots = 2;
-                
-                emit!(DepositAllocated {
-                    user: upline_account.key(),
-                    slot: 2,
-                    amount: current_deposit,
-                    allocation_type: "reserve_sol".to_string(),
-                });
-                
-                emit!(RecursionProcessed {
-                    current_user: upline_account.key(),
-                    upline_user: upline_account.key(),
-                    slot_allocated: 2,
-                    level,
-                });
-                
-                // Serializa os dados de volta
-                upline_data.try_serialize(&mut &mut upline_account.data.borrow_mut()[..])?;
-                
-                msg!("Recursion completed at level {} - allocated to Slot 2", level);
-                return Ok(true); // Depósito foi alocado
-            }
-            
-            2 => { // Slot 3 - COMPLETA MATRIZ E CONTINUA
-                msg!("Level {}: Slot 3 available - completing matrix and continuing", level);
-                
-                // Paga o upline se tiver SOL reservado
-                if upline_data.reserved_sol > 0 {
-                    process_pay_referrer(
-                        program_sol_vault,
-                        upline_account,
-                        upline_data.reserved_sol,
-                        &[&[
-                            b"program_sol_vault".as_ref(),
-                            &[program_sol_vault_bump]
-                        ]],
-                    )?;
-                    
-                    upline_data.reserved_sol = 0;
-                    msg!("Paid {} SOL to upline at level {}", upline_data.reserved_sol, level);
-                }
-                
-                // Completa a matriz do upline
-                upline_data.chain.slots[2] = Some(upline_account.key());
-                upline_data.chain.filled_slots = 3;
-                
-                // Registra matriz completada para airdrop
-                record_matrix_completion(&mut upline_data, state)?;
-                
-                // Reinicia matriz
-                upline_data.chain.id = state.next_chain_id;
-                upline_data.chain.slots = [None, None, None];
-                upline_data.chain.filled_slots = 0;
-                state.next_chain_id += 1;
-                
-                emit!(RecursionProcessed {
-                    current_user: upline_account.key(),
-                    upline_user: upline_account.key(),
-                    slot_allocated: 3,
-                    level,
-                });
-                
-                // Serializa os dados de volta
-                upline_data.try_serialize(&mut &mut upline_account.data.borrow_mut()[..])?;
-                
-                msg!("Matrix completed at level {} - continuing recursion", level);
-                // Continua para o próximo upline (não retorna aqui)
-            }
-
-            _ => { // Matriz já cheia, continua para próximo upline
-                msg!("Level {}: Matrix full, continuing to next upline", level);
-                continue;
-            }
-        }
-    }
-
-    // Se chegou aqui, não encontrou slot disponível em nenhum upline
-    msg!("No available slots found in uplines - executing fallback swap+burn");
-
-// Fallback: swap + burn
-let donut_received = meteora_swap_sol_to_donut_direct(
-    current_deposit,
-    vault_authority, // Usa a authority do programa como fallback
-    program_token_vault,
-    vault_authority,
-    pool,
-    a_vault,
-    b_vault,
-    a_token_vault,
-    b_token_vault,
-    a_vault_lp,
-    b_vault_lp,
-    a_vault_lp_mint,
-    b_vault_lp_mint,
-    amm_program,
-    vault_program,
-    token_program,
-)?;
-
-burn_donut_from_vault(
-    program_token_vault,
-    donut_mint,
-    vault_authority,
-    token_program,
-    donut_received,
-    &[&[
-        b"token_vault_authority".as_ref(),
-        &[vault_authority_bump]
-    ]],
-)?;
-
-emit!(DonutSwappedAndBurned {
-    user: vault_authority.key(),
-    sol_amount: current_deposit,
-    donut_amount: donut_received,
-    week_number: state.current_week,
-});
-
-msg!("Fallback executed: swapped {} SOL for {} DONUT and burned", 
-     current_deposit, donut_received);
-
-Ok(true) // Depósito foi processado via fallback
-}
-
-// ===== CONTAS PARA INSTRUÇÕES =====
-
 // Accounts for initialize instruction
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-#[account(
-    init,
-    payer = owner,
-    space = 8 + ProgramState::SIZE
-)]
-pub state: Account<'info, ProgramState>,
-#[account(mut)]
-pub owner: Signer<'info>,
-pub system_program: Program<'info, System>,
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + ProgramState::SIZE
+    )]
+    pub state: Account<'info, ProgramState>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
-// NOVA SIMPLIFICADA: Accounts for registration without referrer with deposit
+// Accounts for registration without referrer - SIMPLIFIED
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
-pub struct RegisterWithoutReferrerDepositSimplified<'info> {
-#[account(mut)]
-pub state: Account<'info, ProgramState>,
+pub struct RegisterWithoutReferrerSwap<'info> {
+    #[account(mut)]
+    pub state: Account<'info, ProgramState>,
 
-#[account(mut)]
-pub owner: Signer<'info>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    
+    #[account(mut)]
+    pub user_wallet: Signer<'info>,
+    
+    #[account(
+        init,
+        payer = user_wallet,
+        space = 8 + UserAccount::SIZE,
+        seeds = [b"user_account", user_wallet.key().as_ref()],
+        bump
+    )]
+    pub user: Account<'info, UserAccount>,
 
-#[account(mut)]
-pub user_wallet: Signer<'info>,
+    // User DONUT token account
+    #[account(
+        init,
+        payer = user_wallet,
+        associated_token::mint = token_mint,
+        associated_token::authority = user_wallet
+    )]
+    pub user_donut_account: Account<'info, TokenAccount>,
+    
+    // Token mint
+    /// CHECK: This is the DONUT token mint address
+    pub token_mint: AccountInfo<'info>,
 
-#[account(
-    init,
-    payer = user_wallet,
-    space = 8 + UserAccount::SIZE,
-    seeds = [b"user_account", user_wallet.key().as_ref()],
-    bump
-)]
-pub user: Account<'info, UserAccount>,
+    // Swap Accounts
+    /// CHECK: Pool account for swaps
+    #[account(mut)]
+    pub pool: UncheckedAccount<'info>,
 
-// VAULT PRINCIPAL (JÁ EXISTE)
-#[account(mut)]
-pub program_token_vault: Account<'info, TokenAccount>,
+    /// CHECK: Token A vault (DONUT)
+    #[account(mut)]
+    pub token_a_vault: UncheckedAccount<'info>,
 
-/// CHECK: PDA authority for token vault operations
-#[account(
-    seeds = [b"token_vault_authority"],
-    bump
-)]
-pub vault_authority: UncheckedAccount<'info>,
+    /// CHECK: Token B vault (SOL)
+    #[account(mut)]
+    pub token_b_vault: UncheckedAccount<'info>,
 
-// Contas de depósito Meteora (mesmas de antes)
-/// CHECK: Pool account (PDA)
-#[account(mut)]
-pub pool: UncheckedAccount<'info>,
+    /// CHECK: Meteora swap program
+    pub swap_program: UncheckedAccount<'info>,
 
-/// CHECK: Vault account for token B (SOL)
-#[account(mut)]
-pub b_vault: UncheckedAccount<'info>,
-
-/// CHECK: Token vault account for token B (SOL)
-#[account(mut)]
-pub b_token_vault: UncheckedAccount<'info>,
-
-/// CHECK: LP token mint for vault B
-#[account(mut)]
-pub b_vault_lp_mint: UncheckedAccount<'info>,
-
-/// CHECK: LP token account for vault B
-#[account(mut)]
-pub b_vault_lp: UncheckedAccount<'info>,
-
-/// CHECK: Vault program
-pub vault_program: UncheckedAccount<'info>,
-
-/// CHECK: AMM program
-pub amm_program: UncheckedAccount<'info>,
-
-/// CHECK: Token mint
-#[account(mut)]
-pub token_mint: UncheckedAccount<'info>,
-
-// Programas necessários
-pub token_program: Program<'info, Token>,
-pub system_program: Program<'info, System>,
-pub associated_token_program: Program<'info, AssociatedToken>,
-pub rent: Sysvar<'info, Rent>,
+    // Required programs
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
-// NOVA: Conta para claim de airdrop
-#[derive(Accounts)]
-pub struct ClaimAirdrop<'info> {
-#[account(mut)]
-pub state: Account<'info, ProgramState>,
-
-#[account(mut)]
-pub user: Account<'info, UserAccount>,
-
-#[account(mut)]
-pub user_wallet: Signer<'info>,
-
-#[account(mut)]
-pub user_token_account: Account<'info, TokenAccount>,
-
-#[account(mut)]
-pub program_token_vault: Account<'info, TokenAccount>,
-
-/// CHECK: PDA authority for token vault operations - derived from seeds
-#[account(
-    seeds = [b"token_vault_authority"],
-    bump
-)]
-pub vault_authority: UncheckedAccount<'info>,
-
-pub token_program: Program<'info, Token>,
-}
-
-// CORRIGIDA SIMPLIFICADA: Registro com depósito SOL expandido para recursão completa
+// Structure for registration with SOL - SIMPLIFIED
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
-pub struct RegisterWithSolDepositSimplified<'info> {
-#[account(mut)]
-pub state: Account<'info, ProgramState>,
+pub struct RegisterWithSolSwap<'info> {
+    #[account(mut)]
+    pub state: Account<'info, ProgramState>,
 
-#[account(mut)]
-pub user_wallet: Signer<'info>,
+    #[account(mut)]
+    pub user_wallet: Signer<'info>,
 
-// Contas de referência
-#[account(mut)]
-pub referrer: Account<'info, UserAccount>,
+    // Reference accounts
+    #[account(mut)]
+    pub referrer: Account<'info, UserAccount>,
+    
+    #[account(mut)]
+    pub referrer_wallet: SystemAccount<'info>,
 
-#[account(mut)]
-pub referrer_wallet: SystemAccount<'info>,
+    // User account
+    #[account(
+        init,
+        payer = user_wallet,
+        space = 8 + UserAccount::SIZE,
+        seeds = [b"user_account", user_wallet.key().as_ref()],
+        bump
+    )]
+    pub user: Account<'info, UserAccount>,
 
-// Conta do usuário
-#[account(
-    init,
-    payer = user_wallet,
-    space = 8 + UserAccount::SIZE,
-    seeds = [b"user_account", user_wallet.key().as_ref()],
-    bump
-)]
-pub user: Account<'info, UserAccount>,
+    // User DONUT token account
+    #[account(
+        init,
+        payer = user_wallet,
+        associated_token::mint = token_mint,
+        associated_token::authority = user_wallet
+    )]
+    pub user_donut_account: Account<'info, TokenAccount>,
+    
+    // Token mint
+    /// CHECK: This is the DONUT token mint address
+    pub token_mint: AccountInfo<'info>,
 
-// VAULT PRINCIPAL (USADO PARA SWAP+BURN)
-#[account(mut)]
-pub program_token_vault: Account<'info, TokenAccount>,
+    // Swap Accounts
+    /// CHECK: Pool account for swaps
+    #[account(mut)]
+    pub pool: UncheckedAccount<'info>,
 
-/// CHECK: PDA authority for token vault operations
-#[account(
-    seeds = [b"token_vault_authority"],
-    bump
-)]
-pub vault_authority: UncheckedAccount<'info>,
+    /// CHECK: Token A vault (DONUT)
+    #[account(mut)]
+    pub token_a_vault: UncheckedAccount<'info>,
 
-// Contas de depósito (modificadas para swap)
-/// CHECK: Pool account (PDA) - validado por endereço
-#[account(mut)]
-pub pool: UncheckedAccount<'info>,
+    /// CHECK: Token B vault (SOL)
+    #[account(mut)]
+    pub token_b_vault: UncheckedAccount<'info>,
 
-// Contas para vault B (SOL)
-/// CHECK: Vault account for token B (SOL) - validado por endereço
-#[account(mut)]
-pub b_vault: UncheckedAccount<'info>,
+    /// CHECK: Meteora swap program
+    pub swap_program: UncheckedAccount<'info>,
 
-/// CHECK: Token vault account for token B (SOL) - validado por endereço
-#[account(mut)]
-pub b_token_vault: UncheckedAccount<'info>,
-
-/// CHECK: LP token mint for vault B - validado por endereço
-#[account(mut)]
-pub b_vault_lp_mint: UncheckedAccount<'info>,
-
-/// CHECK: LP token account for vault B - validado por endereço
-#[account(mut)]
-pub b_vault_lp: UncheckedAccount<'info>,
-
-/// CHECK: Vault program - validado por endereço
-pub vault_program: UncheckedAccount<'info>,
-
-/// CHECK: AMM program - validado por endereço
-pub amm_program: UncheckedAccount<'info>,
-
-// Contas para SOL reserve (SLOT 2)
-#[account(
-    mut,
-    seeds = [b"program_sol_vault"],
-    bump
-)]
-pub program_sol_vault: SystemAccount<'info>,
-
-// Contas para tokens
-/// CHECK: Token mint - validado por endereço
-#[account(mut)]
-pub token_mint: UncheckedAccount<'info>,
-
-/// CHECK: Referrer's ATA para receber tokens
-#[account(mut)]
-pub referrer_token_account: UncheckedAccount<'info>,
-
-// Programas necessários
-pub token_program: Program<'info, Token>,
-pub system_program: Program<'info, System>,
-pub associated_token_program: Program<'info, AssociatedToken>,
-pub rent: Sysvar<'info, Rent>,
+    // SOL reserve vault
+    #[account(
+        mut,
+        seeds = [b"program_sol_vault"],
+        bump
+    )]
+    pub program_sol_vault: SystemAccount<'info>,
+    
+    // Required programs
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub rent: Sysvar<'info, Rent>,
 }
-
-// Contas para informações do programa
-#[derive(Accounts)]
-pub struct GetProgramInfo<'info> {
-pub state: Account<'info, ProgramState>,
-pub user: Signer<'info>,
-}
-
-// Contas para informações de airdrop do usuário
-#[derive(Accounts)]
-pub struct GetUserAirdropInfo<'info> {
-pub user: Account<'info, UserAccount>,
-pub user_wallet: Signer<'info>,
-}
-
-// ===== PROGRAMA PRINCIPAL =====
 
 #[program]
 pub mod referral_system {
-use super::*;
+    use super::*;
 
-// MODIFICADO: Initialize expandido para airdrop
-pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-    if ctx.accounts.owner.key() != admin_addresses::AUTHORIZED_INITIALIZER {
-        return Err(error!(ErrorCode::NotAuthorized));
+    // Initialize program state
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+
+        if ctx.accounts.owner.key() != admin_addresses::AUTHORIZED_INITIALIZER {
+            return Err(error!(ErrorCode::NotAuthorized));
+        }
+
+        let state = &mut ctx.accounts.state;
+        state.owner = ctx.accounts.owner.key();
+        state.multisig_treasury = admin_addresses::MULTISIG_TREASURY;
+        state.next_upline_id = 1;
+        state.next_chain_id = 1;
+        state.is_locked = false;
+        
+        Ok(())
     }
+    
+    // Register without referrer - SIMPLIFIED
+    pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerSwap>, deposit_amount: u64) -> Result<()> {
+        // PROTEÇÃO REENTRANCY
+        if ctx.accounts.state.is_locked {
+            return Err(error!(ErrorCode::ReentrancyLock));
+        }
+        ctx.accounts.state.is_locked = true;
 
-    let state = &mut ctx.accounts.state;
-    state.owner = ctx.accounts.owner.key();
-    state.multisig_treasury = admin_addresses::MULTISIG_TREASURY;
-    state.next_upline_id = 1;
-    state.next_chain_id = 1;
-    state.is_locked = false;
+        // Verify if the caller is the multisig treasury
+        if ctx.accounts.owner.key() != ctx.accounts.state.multisig_treasury {
+            ctx.accounts.state.is_locked = false;
+            return Err(error!(ErrorCode::NotAuthorized));
+        }
+    
+        // STRICT VERIFICATION OF ADDRESSES
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.pool.key(), 
+            &verified_addresses::POOL_ADDRESS, 
+            ErrorCode::InvalidPoolAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
 
-    // NOVO: Inicialização do sistema de airdrop
-    state.current_week = 1;
-    state.total_matrices_this_week = 0;
-    state.program_start_timestamp = Clock::get()?.unix_timestamp;
-    state.airdrop_active = true;
-    state.closed_weeks = Vec::new();
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.token_mint.key(), 
+            &verified_addresses::TOKEN_MINT, 
+            ErrorCode::InvalidTokenMintAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
 
-    msg!("Program initialized with airdrop system starting at week 1");
-    Ok(())
-}
+        // Use global upline ID
+        let state = &mut ctx.accounts.state;
+        let upline_id = state.next_upline_id;
+        let chain_id = state.next_chain_id;
 
-// NOVA SIMPLIFICADA: Register without referrer com swap+burn obrigatório
-pub fn register_without_referrer_simplified<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, RegisterWithoutReferrerDepositSimplified<'info>>, 
-    deposit_amount: u64
-) -> Result<()> {
-    // PROTEÇÃO REENTRANCY
-    if ctx.accounts.state.is_locked {
-        return Err(error!(ErrorCode::ReentrancyLock));
-    }
-    ctx.accounts.state.is_locked = true;
+        state.next_upline_id += 1;
+        state.next_chain_id += 1;
 
-    // Verifica se é o multisig treasury
-    if ctx.accounts.owner.key() != ctx.accounts.state.multisig_treasury {
+        // Create new user data
+        let user = &mut ctx.accounts.user;
+
+        // Initialize user data with an empty upline structure
+        user.is_registered = true;
+        user.referrer = None;
+        user.owner_wallet = ctx.accounts.user_wallet.key();
+        user.upline = ReferralUpline {
+            id: upline_id,
+            depth: 1,
+            upline: vec![],
+        };
+        user.chain = ReferralChain {
+            id: chain_id,
+            slots: [None, None, None],
+            filled_slots: 0,
+        };
+        
+        // Initialize financial data
+        user.reserved_sol = 0;
+
+        // Process SOL to DONUT swap
+        if let Err(e) = process_sol_to_donut_swap(
+            &ctx.accounts.user_wallet.to_account_info(),
+            &ctx.accounts.user_donut_account.to_account_info(),
+            &ctx.accounts.pool.to_account_info(),
+            &ctx.accounts.token_a_vault.to_account_info(),
+            &ctx.accounts.token_b_vault.to_account_info(),
+            &ctx.accounts.swap_program.to_account_info(),
+            &ctx.accounts.token_program,
+            &ctx.accounts.system_program,
+            deposit_amount
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
+
+        // PROTEÇÃO REENTRANCY - FIM
         ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::NotAuthorized));
+        Ok(())
     }
 
-    // Verificação de mudança de semana
-    check_and_process_week_change(&mut ctx.accounts.state)?;
+    // Register with SOL - SIMPLIFIED AND CORRECTED
+    pub fn register_with_sol_swap<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolSwap<'info>>, 
+        deposit_amount: u64
+    ) -> Result<()> {
+        // PROTEÇÃO REENTRANCY
+        if ctx.accounts.state.is_locked {
+            msg!("Transaction rejected: reentrancy protection active");
+            return Err(error!(ErrorCode::ReentrancyLock));
+        }
+        
+        ctx.accounts.state.is_locked = true;
+        
+        // Check if referrer is registered
+        if !ctx.accounts.referrer.is_registered {
+            ctx.accounts.state.is_locked = false;
+            return Err(error!(ErrorCode::ReferrerNotRegistered));
+        }
 
-    // VALIDAÇÕES DE SEGURANÇA CRÍTICAS
-    verify_address_strict(
-        &ctx.accounts.vault_program.key(), 
-        &verified_addresses::METEORA_VAULT_PROGRAM, 
-        ErrorCode::InvalidVaultProgram
-    )?;
+        // DETERMINE ACTUAL SLOT FROM BLOCKCHAIN
+        let actual_slot_idx = ctx.accounts.referrer.chain.filled_slots as usize;
+        
+        // DETECT BASE USER
+        let is_base_user = ctx.accounts.referrer.referrer.is_none() && 
+                           ctx.accounts.referrer.upline.upline.is_empty();
+        
+        msg!("Security Check - Slot: {}, Base User: {}, Referrer has {} uplines", 
+             actual_slot_idx, is_base_user, ctx.accounts.referrer.upline.upline.len());
 
-    verify_address_strict(
-        &ctx.accounts.amm_program.key(), 
-        &verified_addresses::METEORA_AMM_PROGRAM, 
-        ErrorCode::InvalidMeteoraAmmProgram
-    )?;
+        // VALIDATE CHAINLINK PRICE FEED - Get from remaining accounts
+        if ctx.remaining_accounts.len() < 2 {
+            ctx.accounts.state.is_locked = false;
+            return Err(error!(ErrorCode::InvalidPriceFeed));
+        }
+        
+        let chainlink_feed = &ctx.remaining_accounts[0];
+        let chainlink_program = &ctx.remaining_accounts[1];
+        
+        // Verify Chainlink addresses
+        if let Err(e) = verify_chainlink_addresses(
+            &chainlink_program.key(),
+            &chainlink_feed.key(),
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
 
-    verify_address_strict(
-        &ctx.accounts.pool.key(),
-        &verified_addresses::POOL_ADDRESS,
-        ErrorCode::InvalidPoolAddress
-    )?;
+        // Get minimum deposit amount from Chainlink feed
+        let minimum_deposit = match calculate_minimum_sol_deposit(
+            chainlink_feed,
+            chainlink_program,
+        ) {
+            Ok(val) => val,
+            Err(e) => {
+                ctx.accounts.state.is_locked = false;
+                return Err(e);
+            }
+        };
 
-    verify_address_strict(
-        &ctx.accounts.token_mint.key(),
-        &verified_addresses::TOKEN_MINT,
-        ErrorCode::InvalidTokenMintAddress
-    )?;
+        // Verify deposit amount meets minimum requirement
+        if deposit_amount < minimum_deposit {
+            msg!("Deposit amount: {}, minimum required: {}", deposit_amount, minimum_deposit);
+            ctx.accounts.state.is_locked = false;
+            return Err(error!(ErrorCode::InsufficientDeposit));
+        }
 
-    verify_address_strict(
-        &ctx.accounts.program_token_vault.key(),
-        &verified_addresses::PROGRAM_TOKEN_VAULT,
-        ErrorCode::InvalidProgramTokenVault
-    )?;
+        // STRICT VERIFICATION OF ADDRESSES
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.pool.key(), 
+            &verified_addresses::POOL_ADDRESS, 
+            ErrorCode::InvalidPoolAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
 
-    // Validação de depósito mínimo usando remaining accounts para Chainlink
-    let expected_remaining_count = 7; // pool, a_vault, a_vault_lp, a_vault_lp_mint, a_token_vault, chainlink_feed, chainlink_program
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.token_mint.key(), 
+            &verified_addresses::TOKEN_MINT, 
+            ErrorCode::InvalidTokenMintAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
 
-    if ctx.remaining_accounts.len() < expected_remaining_count {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::MissingVaultAAccounts));
-    }
+        // VALIDATE SLOT 3 UPLINE ACCOUNTS
+        if actual_slot_idx == 2 && !is_base_user {
+            msg!("SLOT 3 - Normal user detected: validating ALL upline accounts");
+            
+            let base_accounts = 2; // chainlink feed + program
+            let referrer_uplines_count = ctx.accounts.referrer.upline.upline.len();
+            let required_upline_accounts = referrer_uplines_count * 2; // pairs instead of trios
+            let total_required = base_accounts + required_upline_accounts;
+            
+            msg!(
+                "SLOT 3 validation: Referrer has {} uplines, requiring {} accounts total (got {})",
+                referrer_uplines_count, 
+                total_required,
+                ctx.remaining_accounts.len()
+            );
+            
+            if ctx.remaining_accounts.len() != total_required {
+                msg!(
+                    "CRITICAL: SLOT 3 requires ALL {} uplines! Expected {} accounts, got {}", 
+                    referrer_uplines_count,
+                    total_required,
+                    ctx.remaining_accounts.len()
+                );
+                ctx.accounts.state.is_locked = false;
+                return Err(error!(ErrorCode::Slot3RequiresUplineAccounts));
+            }
+            
+            let upline_accounts = &ctx.remaining_accounts[base_accounts..];
+            if let Err(e) = validate_upline_accounts(&ctx.accounts.referrer, upline_accounts) {
+                ctx.accounts.state.is_locked = false;
+                return Err(e);
+            }
+            
+            msg!("SLOT 3 validation passed: ALL {} uplines verified", referrer_uplines_count);
+        }
+        
+        // Create new UplineEntry for referrer
+        let referrer_entry = UplineEntry {
+            pda: ctx.accounts.referrer.key(),
+            wallet: ctx.accounts.referrer_wallet.key(),
+        };
+        
+        // Create user's upline chain
+        let mut new_upline = Vec::new();
+        
+        if ctx.accounts.referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
+            new_upline.try_reserve(MAX_UPLINE_DEPTH).ok();
+            let start_idx = ctx.accounts.referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
+            new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline[start_idx..]);
+        } else {
+            new_upline.try_reserve(ctx.accounts.referrer.upline.upline.len() + 1).ok();
+            new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline);
+        }
+        
+        new_upline.push(referrer_entry);
+        new_upline.shrink_to_fit();
 
-    let a_vault = &ctx.remaining_accounts[1];
-    let a_vault_lp = &ctx.remaining_accounts[2];
-    let a_vault_lp_mint = &ctx.remaining_accounts[3];
-    let a_token_vault = &ctx.remaining_accounts[4];
-    let chainlink_feed = &ctx.remaining_accounts[5];
-    let chainlink_program = &ctx.remaining_accounts[6];
+        // Setup user account
+        let state = &mut ctx.accounts.state;
+        let upline_id = state.next_upline_id;
+        let chain_id = state.next_chain_id;
 
-    // Valida endereços das contas adicionais
-    verify_address_strict(&a_vault.key(), &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(&a_vault_lp.key(), &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultALpAddress)?;
-    verify_address_strict(&a_vault_lp_mint.key(), &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultALpMintAddress)?;
-    verify_address_strict(&chainlink_program.key(), &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
-    verify_address_strict(&chainlink_feed.key(), &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
+        state.next_chain_id += 1;
 
-    let minimum_deposit = calculate_minimum_sol_deposit(chainlink_feed, chainlink_program)?;
+        let user = &mut ctx.accounts.user;
+        user.is_registered = true;
+        user.referrer = Some(ctx.accounts.referrer.key());
+        user.owner_wallet = ctx.accounts.user_wallet.key();
+        user.upline = ReferralUpline {
+            id: upline_id,
+            depth: ctx.accounts.referrer.upline.depth + 1,
+            upline: new_upline,
+        };
+        user.chain = ReferralChain {
+            id: chain_id,
+            slots: [None, None, None],
+            filled_slots: 0,
+        };
+        user.reserved_sol = 0;
 
-    if deposit_amount < minimum_deposit {
-        msg!("Deposit amount: {}, minimum required: {}", deposit_amount, minimum_deposit);
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::InsufficientDeposit));
-    }
+        // SLOT-BASED FINANCIAL LOGIC
+        let slot_idx = actual_slot_idx;
+        let mut swap_processed = false;
 
-    // Use global upline ID
-    let state = &mut ctx.accounts.state;
-    let upline_id = state.next_upline_id;
-    let chain_id = state.next_chain_id;
-
-    state.next_upline_id += 1;
-    state.next_chain_id += 1;
-
-    // Create new user data
-    let user = &mut ctx.accounts.user;
-
-    // Initialize user data with an empty upline structure
-    user.is_registered = true;
-    user.referrer = None;
-    user.owner_wallet = ctx.accounts.user_wallet.key();
-    user.upline = ReferralUpline {
-        id: upline_id,
-        depth: 1,
-        upline: vec![],
-    };
-    user.chain = ReferralChain {
-        id: chain_id,
-        slots: [None, None, None],
-        filled_slots: 0,
-    };
-
-    // Initialize financial data
-    user.reserved_sol = 0;
-    user.reserved_tokens = 0;
-
-    // Initialize airdrop data
-    user.completed_matrices_total = 0;
-    user.weekly_matrices = Vec::new();
-    user.total_donut_earned = 0;
-    user.total_donut_claimed = 0;
-    user.last_processed_week = 0;
-
-    // === SWAP + BURN SIMPLIFICADO ===
-    msg!("BASE USER: Processing swap+burn for {} SOL", deposit_amount);
-
-    // Armazena saldo inicial do vault
-    let initial_vault_balance = ctx.accounts.program_token_vault.amount;
-
-    // Swap SOL -> DONUT direto no vault principal
-    let donut_received = meteora_swap_sol_to_donut_direct(
-        deposit_amount,
-        &ctx.accounts.user_wallet.to_account_info(),
-        &ctx.accounts.program_token_vault,
-        &ctx.accounts.vault_authority.to_account_info(),
-        &ctx.accounts.pool.to_account_info(),
-        a_vault,
-        &ctx.accounts.b_vault.to_account_info(),
-        a_token_vault,
-        &ctx.accounts.b_token_vault.to_account_info(),
-        a_vault_lp,
-        &ctx.accounts.b_vault_lp.to_account_info(),
-        a_vault_lp_mint,
-        &ctx.accounts.b_vault_lp_mint.to_account_info(),
-        &ctx.accounts.amm_program.to_account_info(),
-        &ctx.accounts.vault_program.to_account_info(),
-        &ctx.accounts.token_program.to_account_info(),
-    )?;
-
-    // Calcular DONUT recebido corretamente
-    let current_vault_balance = ctx.accounts.program_token_vault.amount;
-    let actual_donut_received = current_vault_balance.saturating_sub(initial_vault_balance);
-
-    // Burn DONUT imediatamente
-    burn_donut_from_vault(
-        &ctx.accounts.program_token_vault,
-        &ctx.accounts.token_mint.to_account_info(),
-        &ctx.accounts.vault_authority.to_account_info(),
-        &ctx.accounts.token_program.to_account_info(),
-        actual_donut_received,
-        &[&[
-            b"token_vault_authority".as_ref(),
-            &[ctx.bumps.vault_authority]
-        ]],
-    )?;
-
-    emit!(DonutSwappedAndBurned {
-        user: ctx.accounts.user_wallet.key(),
-        sol_amount: deposit_amount,
-        donut_amount: actual_donut_received,
-        week_number: ctx.accounts.state.current_week,
-    });
-
-    msg!("BASE USER: Swapped {} SOL for {} DONUT and burned successfully", 
-         deposit_amount, actual_donut_received);
-
-    // Remove lock de reentrancy
-    ctx.accounts.state.is_locked = false;
-
-    msg!("Base user registered successfully with simplified swap+burn");
-    Ok(())
-}
-
-// NOVA: Instrução para claim de airdrop
-pub fn claim_airdrop(ctx: Context<ClaimAirdrop>) -> Result<()> {
-    // Verifica mudança de semana
-    check_and_process_week_change(&mut ctx.accounts.state)?;
-
-    // Processa semanas pendentes do usuário
-    process_user_pending_weeks(
-        &mut ctx.accounts.user, 
-        &ctx.accounts.state
-    )?;
-
-    // Calcula disponível para claim
-    let available = ctx.accounts.user.get_claimable_donut();
-
-    if available == 0 {
-        return Err(error!(ErrorCode::NothingToClaim));
-    }
-
-    // Valida conta de token do usuário
-    verify_ata_strict(
-        &ctx.accounts.user_token_account.to_account_info(),
-        &ctx.accounts.user_wallet.key(),
-        &verified_addresses::TOKEN_MINT
-    )?;
-
-    // Transfere DONUT
-    let transfer_instruction = spl_token::instruction::transfer(
-        &ctx.accounts.token_program.key(),
-        &ctx.accounts.program_token_vault.key(),
-        &ctx.accounts.user_token_account.key(),
-        &ctx.accounts.vault_authority.key(),
-        &[],
-        available,
-    ).map_err(|_| error!(ErrorCode::TokenTransferFailed))?;
-
-    let transfer_accounts = vec![
-        ctx.accounts.program_token_vault.to_account_info(),
-        ctx.accounts.user_token_account.to_account_info(),
-        ctx.accounts.vault_authority.to_account_info(),
-        ctx.accounts.token_program.to_account_info(),
-    ];
-
-    solana_program::program::invoke_signed(
-        &transfer_instruction,
-        &transfer_accounts,
-        &[&[
-            b"token_vault_authority".as_ref(),
-            &[ctx.bumps.vault_authority]
-        ]],
-    ).map_err(|e| {
-        msg!("Airdrop transfer failed: {:?}", e);
-        error!(ErrorCode::TokenTransferFailed)
-    })?;
-
-    // Atualiza claimed
-    ctx.accounts.user.total_donut_claimed = ctx.accounts.user.total_donut_claimed
-        .checked_add(available)
-        .ok_or(ErrorCode::ArithmeticOverflow)?;
-
-    emit!(AirdropClaimed {
-        user: ctx.accounts.user_wallet.key(),
-        amount: available,
-        total_earned: ctx.accounts.user.total_donut_earned,
-        total_claimed: ctx.accounts.user.total_donut_claimed,
-    });
-
-    msg!("Claimed {} DONUT (total earned: {}, total claimed: {})", 
-         available, 
-         ctx.accounts.user.total_donut_earned, 
-         ctx.accounts.user.total_donut_claimed);
-
-    Ok(())
-}
-
-// CORRIGIDA SIMPLIFICADA: Registro com depósito SOL - sistema completo com recursão
-pub fn register_with_sol_deposit_simplified<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDepositSimplified<'info>>, 
-    deposit_amount: u64
-) -> Result<()> {
-    // === PROTEÇÃO REENTRANCY ===
-    if ctx.accounts.state.is_locked {
-        msg!("Transaction rejected: reentrancy protection active");
-        return Err(error!(ErrorCode::ReentrancyLock));
-    }
-    ctx.accounts.state.is_locked = true;
-
-    // === VERIFICAÇÃO DE MUDANÇA DE SEMANA ===
-    check_and_process_week_change(&mut ctx.accounts.state)?;
-
-    // === PROCESSAMENTO DE AIRDROP PENDENTE DO REFERRER ===
-    process_user_pending_weeks(
-        &mut ctx.accounts.referrer, 
-        &ctx.accounts.state
-    )?;
-
-    // === VALIDAÇÕES DE SEGURANÇA CRÍTICAS ===
-
-    // Valida programas Meteora
-    verify_address_strict(
-        &ctx.accounts.vault_program.key(), 
-        &verified_addresses::METEORA_VAULT_PROGRAM, 
-        ErrorCode::InvalidVaultProgram
-    )?;
-
-    verify_address_strict(
-        &ctx.accounts.amm_program.key(), 
-        &verified_addresses::METEORA_AMM_PROGRAM, 
-        ErrorCode::InvalidMeteoraAmmProgram
-    )?;
-
-    // Valida vault do programa
-    verify_address_strict(
-        &ctx.accounts.program_token_vault.key(), 
-        &verified_addresses::PROGRAM_TOKEN_VAULT, 
-        ErrorCode::InvalidProgramTokenVault
-    )?;
-
-    // Verifica se referrer está registrado
-    if !ctx.accounts.referrer.is_registered {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::ReferrerNotRegistered));
-    }
-
-    // === VALIDAÇÃO DE CONTAS RESTANTES ===
-    let expected_base_count = 7; // pool, a_vault, a_vault_lp, a_vault_lp_mint, a_token_vault, chainlink_feed, chainlink_program
-
-    if ctx.remaining_accounts.len() < expected_base_count {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::MissingVaultAAccounts));
-    }
-
-    // Extrai contas validadas
-    let pool = &ctx.remaining_accounts[0];
-    let a_vault = &ctx.remaining_accounts[1];
-    let a_vault_lp = &ctx.remaining_accounts[2];
-    let a_vault_lp_mint = &ctx.remaining_accounts[3];
-    let a_token_vault = &ctx.remaining_accounts[4];
-    let chainlink_feed = &ctx.remaining_accounts[5];
-    let chainlink_program = &ctx.remaining_accounts[6];
-
-    // Contas de uplines para recursão (se existirem)
-    let upline_accounts = if ctx.remaining_accounts.len() > expected_base_count {
-        &ctx.remaining_accounts[expected_base_count..]
-    } else {
-        &[]
-    };
-
-    // Valida endereços das contas
-    verify_address_strict(&pool.key(), &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
-    verify_address_strict(&a_vault.key(), &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(&a_vault_lp.key(), &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultALpAddress)?;
-    verify_address_strict(&a_vault_lp_mint.key(), &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultALpMintAddress)?;
-    verify_address_strict(&chainlink_program.key(), &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
-    verify_address_strict(&chainlink_feed.key(), &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
-
-    // === VALIDAÇÃO DE DEPÓSITO MÍNIMO ===
-    let minimum_deposit = calculate_minimum_sol_deposit(chainlink_feed, chainlink_program)?;
-
-    if deposit_amount < minimum_deposit {
-        msg!("Deposit amount: {}, minimum required: {}", deposit_amount, minimum_deposit);
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::InsufficientDeposit));
-    }
-
-    // === CRIAÇÃO DA CONTA DO USUÁRIO ===
-
-    // Cria UplineEntry para o referrer
-    let referrer_entry = UplineEntry {
-        pda: ctx.accounts.referrer.key(),
-        wallet: ctx.accounts.referrer_wallet.key(),
-    };
-
-    // Constrói chain de upline (máximo 6 níveis)
-    let mut new_upline = Vec::new();
-    if ctx.accounts.referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
-        let start_idx = ctx.accounts.referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
-        new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline[start_idx..]);
-    } else {
-        new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline);
-    }
-    new_upline.push(referrer_entry);
-
-    // Configura IDs
-    let state = &mut ctx.accounts.state;
-    let upline_id = state.next_upline_id;
-    let chain_id = state.next_chain_id;
-    state.next_chain_id += 1;
-
-    // Inicializa conta do usuário
-    let user = &mut ctx.accounts.user;
-    user.is_registered = true;
-    user.referrer = Some(ctx.accounts.referrer.key());
-    user.owner_wallet = ctx.accounts.user_wallet.key();
-    user.upline = ReferralUpline {
-        id: upline_id,
-        depth: ctx.accounts.referrer.upline.depth + 1,
-        upline: new_upline,
-    };
-    user.chain = ReferralChain {
-        id: chain_id,
-        slots: [None, None, None],
-        filled_slots: 0,
-    };
-    user.reserved_sol = 0;
-    user.reserved_tokens = 0;
-    user.completed_matrices_total = 0;
-    user.weekly_matrices = Vec::new();
-    user.total_donut_earned = 0;
-    user.total_donut_claimed = 0;
-    user.last_processed_week = 0;
-
-    // === LÓGICA DOS SLOTS ===
-
-    let slot_idx = ctx.accounts.referrer.chain.filled_slots as usize;
-    let mut deposit_processed = false;
-
-    match slot_idx {
-        0 => { // SLOT 1: SWAP + BURN
-            msg!("SLOT 1: Processing swap and burn for {} SOL", deposit_amount);
-
-            // Armazena saldo inicial
-            let initial_balance = ctx.accounts.program_token_vault.amount;
-
-            // Swap SOL -> DONUT via Meteora
-            let donut_received = meteora_swap_sol_to_donut_direct(
-                deposit_amount,
+        if slot_idx == 0 {
+            // SLOT 1: Swap SOL to DONUT
+            if let Err(e) = process_sol_to_donut_swap(
                 &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.program_token_vault,
-                &ctx.accounts.vault_authority.to_account_info(),
-                pool,
-                a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
-                a_token_vault,
-                &ctx.accounts.b_token_vault.to_account_info(),
-                a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
-                a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                &ctx.accounts.amm_program.to_account_info(),
-                &ctx.accounts.vault_program.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-            )?;
-
-            // Calcula DONUT recebido
-            let current_balance = ctx.accounts.program_token_vault.amount;
-            let actual_donut_received = current_balance.saturating_sub(initial_balance);
-
-            // Burn DONUT imediatamente
-            burn_donut_from_vault(
-                &ctx.accounts.program_token_vault,
-                &ctx.accounts.token_mint.to_account_info(),
-                &ctx.accounts.vault_authority.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                actual_donut_received,
-                &[&[
-                    b"token_vault_authority".as_ref(),
-                    &[ctx.bumps.vault_authority]
-                ]],
-            )?;
-
-            emit!(DonutSwappedAndBurned {
-                user: ctx.accounts.user_wallet.key(),
-                sol_amount: deposit_amount,
-                donut_amount: actual_donut_received,
-                week_number: ctx.accounts.state.current_week,
-            });
-
-            deposit_processed = true;
-            msg!("SLOT 1: Swapped {} SOL for {} DONUT and burned", deposit_amount, actual_donut_received);
-        },
-
-        1 => { // SLOT 2: APENAS RESERVA SOL
-            msg!("SLOT 2: Processing SOL reserve for {} SOL", deposit_amount);
-
-            // Reserva SOL
-            process_reserve_sol(
+                &ctx.accounts.user_donut_account.to_account_info(),
+                &ctx.accounts.pool.to_account_info(),
+                &ctx.accounts.token_a_vault.to_account_info(),
+                &ctx.accounts.token_b_vault.to_account_info(),
+                &ctx.accounts.swap_program.to_account_info(),
+                &ctx.accounts.token_program,
+                &ctx.accounts.system_program,
+                deposit_amount
+            ) {
+                ctx.accounts.state.is_locked = false;
+                return Err(e);
+            }
+            swap_processed = true;
+            msg!("SLOT 1: Swapped {} SOL to DONUT", deposit_amount);
+        } 
+        else if slot_idx == 1 {
+            // SLOT 2: Reserve SOL for referrer
+            if let Err(e) = process_reserve_sol(
                 &ctx.accounts.user_wallet.to_account_info(),
                 &ctx.accounts.program_sol_vault.to_account_info(),
                 deposit_amount
-            )?;
-
+            ) {
+                ctx.accounts.state.is_locked = false;
+                return Err(e);
+            }
+            
             ctx.accounts.referrer.reserved_sol = deposit_amount;
-            deposit_processed = true;
+            swap_processed = true;
             msg!("SLOT 2: Reserved {} SOL", deposit_amount);
-        },
-
-        2 => { // SLOT 3: PAGAMENTO + RECURSÃO
-            msg!("SLOT 3: Processing payment and recursion for {} SOL", deposit_amount);
-
-            // Paga SOL reservado se existir
+        }
+        else if slot_idx == 2 {
+            // SLOT 3: Pay referrer
+            
+            // Pay reserved SOL to referrer
             if ctx.accounts.referrer.reserved_sol > 0 {
-                process_pay_referrer(
+                if let Err(e) = process_pay_referrer(
                     &ctx.accounts.program_sol_vault.to_account_info(),
                     &ctx.accounts.referrer_wallet.to_account_info(),
                     ctx.accounts.referrer.reserved_sol,
@@ -2185,264 +1097,293 @@ pub fn register_with_sol_deposit_simplified<'a, 'b, 'c, 'info>(
                         b"program_sol_vault".as_ref(),
                         &[ctx.bumps.program_sol_vault]
                     ]],
-                )?;
+                ) {
+                    ctx.accounts.state.is_locked = false;
+                    return Err(e);
+                }
                 
-                msg!("SLOT 3: Paid {} SOL to referrer", ctx.accounts.referrer.reserved_sol);
                 ctx.accounts.referrer.reserved_sol = 0;
             }
+            
+            msg!("SLOT 3: Paid referrer, preparing recursion with {} deposit", deposit_amount);
+        }
+        
+        // Process referrer's matrix
+        let (chain_completed, upline_pubkey) = match process_referrer_chain(
+            &ctx.accounts.user_wallet.key(),
+            &mut ctx.accounts.referrer,
+            state.next_chain_id,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                ctx.accounts.state.is_locked = false;
+                return Err(e);
+            }
+        };
+        
+        if chain_completed {
+            state.next_chain_id += 1;
+        }
 
-            msg!("SLOT 3: Starting recursion with {} SOL", deposit_amount);
-        },
+        // RECURSION PROCESSING (SLOT 3)
+        if chain_completed && slot_idx == 2 {
+            let mut current_user_pubkey = upline_pubkey;
+            let current_deposit = deposit_amount;
 
-        _ => {
+            let upline_start_idx = 2; // After chainlink accounts
+
+            if is_base_user {
+                // BASE USER: No recursion, swap goes to user
+                msg!("Base user matrix completed: swapping {} SOL to DONUT", current_deposit);
+                
+                if let Err(e) = process_sol_to_donut_swap(
+                    &ctx.accounts.user_wallet.to_account_info(),
+                    &ctx.accounts.user_donut_account.to_account_info(),
+                    &ctx.accounts.pool.to_account_info(),
+                    &ctx.accounts.token_a_vault.to_account_info(),
+                    &ctx.accounts.token_b_vault.to_account_info(),
+                    &ctx.accounts.swap_program.to_account_info(),
+                    &ctx.accounts.token_program,
+                    &ctx.accounts.system_program,
+                    current_deposit
+                ) {
+                    ctx.accounts.state.is_locked = false;
+                    return Err(e);
+                }
+                
+                swap_processed = true;
+                msg!("Base user: {} swapped to DONUT", deposit_amount);
+                
+            } else if ctx.remaining_accounts.len() > upline_start_idx && current_deposit > 0 {
+                // NORMAL USER: Process recursion
+                let upline_accounts = &ctx.remaining_accounts[upline_start_idx..];
+                
+                if upline_accounts.len() % 2 != 0 {
+                    msg!("ERROR: Upline accounts not in pairs: {}", upline_accounts.len());
+                    ctx.accounts.state.is_locked = false;
+                    return Err(error!(ErrorCode::MissingUplineAccount));
+                }
+                
+                let pair_count = upline_accounts.len() / 2;
+                msg!("Processing recursion with {} validated upline pairs", pair_count);
+                
+                for pair_index in 0..pair_count {
+                    if pair_index >= MAX_UPLINE_DEPTH || current_deposit == 0 {
+                        break;
+                    }
+
+                    let base_idx = pair_index * 2;
+                    let upline_info = &upline_accounts[base_idx];
+                    let upline_wallet = &upline_accounts[base_idx + 1];
+                    
+                    if upline_wallet.owner != &solana_program::system_program::ID {
+                        ctx.accounts.state.is_locked = false;
+                        return Err(error!(ErrorCode::PaymentWalletInvalid));
+                    }
+                    
+                    if !upline_info.owner.eq(&crate::ID) {
+                        ctx.accounts.state.is_locked = false;
+                        return Err(error!(ErrorCode::InvalidSlotOwner));
+                    }
+
+                    let mut upline_account_data;
+                    {
+                        let data = match upline_info.try_borrow_data() {
+                            Ok(data) => data,
+                            Err(_) => {
+                                ctx.accounts.state.is_locked = false;
+                                return Err(ProgramError::InvalidAccountData.into());
+                            }
+                        };
+                        if data.len() <= 8 {
+                            ctx.accounts.state.is_locked = false;
+                            return Err(ProgramError::InvalidAccountData.into());
+                        }
+
+                        let mut account_slice = &data[8..];
+                        upline_account_data = match UserAccount::deserialize(&mut account_slice) {
+                            Ok(data) => data,
+                            Err(_) => {
+                                ctx.accounts.state.is_locked = false;
+                                return Err(ProgramError::InvalidAccountData.into());
+                            }
+                        };
+
+                        if !upline_account_data.is_registered {
+                            ctx.accounts.state.is_locked = false;
+                            return Err(error!(ErrorCode::SlotNotRegistered));
+                        }
+                    }
+
+                    let upline_slot_idx = upline_account_data.chain.filled_slots as usize;
+                    let upline_key = *upline_info.key;
+                    
+                    upline_account_data.chain.slots[upline_slot_idx] = Some(current_user_pubkey);
+                    
+                    emit!(SlotFilled {
+                        slot_idx: upline_slot_idx as u8,
+                        chain_id: upline_account_data.chain.id,
+                        user: current_user_pubkey,
+                        owner: upline_key,
+                    });
+                    
+                    upline_account_data.chain.filled_slots += 1;
+                    
+                    // Apply slot logic
+                    if upline_slot_idx == 0 {
+                        // FOUND SLOT 1: Swap SOL to DONUT
+                        msg!("Recursion: Found SLOT 1 - swapping to DONUT");
+                        
+                        if let Err(e) = process_sol_to_donut_swap(
+                            &ctx.accounts.user_wallet.to_account_info(),
+                            &ctx.accounts.user_donut_account.to_account_info(),
+                            &ctx.accounts.pool.to_account_info(),
+                            &ctx.accounts.token_a_vault.to_account_info(),
+                            &ctx.accounts.token_b_vault.to_account_info(),
+                            &ctx.accounts.swap_program.to_account_info(),
+                            &ctx.accounts.token_program,
+                            &ctx.accounts.system_program,
+                            current_deposit
+                        ) {
+                            ctx.accounts.state.is_locked = false;
+                            return Err(e);
+                        }
+                        
+                        swap_processed = true;
+                        msg!("Recursion: Found SLOT 1, swapped {} SOL to DONUT", current_deposit);
+                        break; // Stop recursion after swap
+                    } 
+                    else if upline_slot_idx == 1 {
+                        // FOUND SLOT 2: Reserve SOL
+                        msg!("Recursion: Found SLOT 2 - reserving SOL");
+                        
+                        if let Err(e) = process_reserve_sol(
+                            &ctx.accounts.user_wallet.to_account_info(),
+                            &ctx.accounts.program_sol_vault.to_account_info(),
+                            current_deposit
+                        ) {
+                            ctx.accounts.state.is_locked = false;
+                            return Err(e);
+                        }
+                        
+                        upline_account_data.reserved_sol = current_deposit;
+                        swap_processed = true;
+                        msg!("Recursion: Found SLOT 2, reserved {} SOL", current_deposit);
+                        break; // Stop recursion after reserve
+                    }
+                    else if upline_slot_idx == 2 {
+                        // SLOT 3: Pay upline and continue recursion
+                        if upline_account_data.reserved_sol > 0 {
+                            let reserved_sol = upline_account_data.reserved_sol;
+                            
+                            if upline_wallet.owner != &solana_program::system_program::ID {
+                                ctx.accounts.state.is_locked = false;
+                                return Err(error!(ErrorCode::PaymentWalletInvalid));
+                            }
+                            
+                            let ix = solana_program::system_instruction::transfer(
+                                &ctx.accounts.program_sol_vault.key(),
+                                &upline_wallet.key(),
+                                reserved_sol
+                            );
+                            
+                            let mut accounts = Vec::with_capacity(2);
+                            accounts.push(ctx.accounts.program_sol_vault.to_account_info());
+                            accounts.push(upline_wallet.clone());
+                            
+                            if let Err(_) = solana_program::program::invoke_signed(
+                                &ix,
+                                &accounts,
+                                &[&[
+                                    b"program_sol_vault".as_ref(),
+                                    &[ctx.bumps.program_sol_vault]
+                                ]],
+                            ) {
+                                ctx.accounts.state.is_locked = false;
+                                return Err(error!(ErrorCode::ReferrerPaymentFailed));
+                            }
+                            
+                            upline_account_data.reserved_sol = 0;
+                        }
+                        
+                        msg!("Recursion: Paid upline {}, continuing...", upline_key);
+                    }
+                    
+                    let chain_completed = upline_account_data.chain.filled_slots == 3;
+                    
+                    if chain_completed {
+                        let next_chain_id_value = state.next_chain_id;
+                        state.next_chain_id += 1;
+                        
+                        upline_account_data.chain.id = next_chain_id_value;
+                        upline_account_data.chain.slots = [None, None, None];
+                        upline_account_data.chain.filled_slots = 0;
+                        
+                        current_user_pubkey = upline_key;
+                    }
+                    
+                    // Serialize changes
+                    {
+                        let mut data = match upline_info.try_borrow_mut_data() {
+                            Ok(data) => data,
+                            Err(_) => {
+                                ctx.accounts.state.is_locked = false;
+                                return Err(ProgramError::InvalidAccountData.into());
+                            }
+                        };
+                        let mut write_data = &mut data[8..];
+                        if let Err(_) = upline_account_data.serialize(&mut write_data) {
+                            ctx.accounts.state.is_locked = false;
+                            return Err(ProgramError::InvalidAccountData.into());
+                        }
+                    }
+                    
+                    if !chain_completed || current_deposit == 0 {
+                        break;
+                    }
+                    
+                    if pair_index >= MAX_UPLINE_DEPTH - 1 {
+                        break;
+                    }
+                }
+
+                // FALLBACK: If recursion processed all uplines without finding slot 1 or 2
+                if current_deposit > 0 && !swap_processed {
+                    msg!("Recursion fallback: No slot 1/2 found, swapping {} SOL to DONUT", current_deposit);
+                    
+                    if let Err(e) = process_sol_to_donut_swap(
+                        &ctx.accounts.user_wallet.to_account_info(),
+                        &ctx.accounts.user_donut_account.to_account_info(),
+                        &ctx.accounts.pool.to_account_info(),
+                        &ctx.accounts.token_a_vault.to_account_info(),
+                        &ctx.accounts.token_b_vault.to_account_info(),
+                        &ctx.accounts.swap_program.to_account_info(),
+                        &ctx.accounts.token_program,
+                        &ctx.accounts.system_program,
+                        current_deposit
+                    ) {
+                        ctx.accounts.state.is_locked = false;
+                        return Err(e);
+                    }
+                    
+                    swap_processed = true;
+                    msg!("Recursion fallback: Swapped {} SOL to DONUT", current_deposit);
+                }
+            }
+        }
+
+        // FINAL VALIDATION
+        if !swap_processed && (slot_idx == 0 || (slot_idx == 2 && chain_completed)) {
+            msg!("CRITICAL ERROR: Swap not processed - this should NEVER happen!");
             ctx.accounts.state.is_locked = false;
-            return Err(error!(ErrorCode::InvalidSlot));
+            return Err(error!(ErrorCode::SwapNotProcessed));
         }
-    }
 
-    // === PROCESSAMENTO DA MATRIX DO REFERRER ===
-
-    let (chain_completed, _upline_pubkey) = process_referrer_chain(
-        &ctx.accounts.user.key(),
-        &mut ctx.accounts.referrer,
-        ctx.accounts.state.next_chain_id,
-    )?;
-
-    // === REGISTRO DA MATRIX COMPLETADA PARA AIRDROP ===
-    if chain_completed {
-        record_matrix_completion(
-            &mut ctx.accounts.referrer, 
-            &mut ctx.accounts.state
-        )?;
-
-        ctx.accounts.state.next_chain_id += 1;
-
-        msg!("Matrix completed for referrer: {} total matrices in week {}", 
-             ctx.accounts.referrer.completed_matrices_total,
-             ctx.accounts.state.current_week);
-    }
-
-    // === PROCESSAMENTO DE RECURSÃO (SLOT 3 COM MATRIX COMPLETA) ===
-    if chain_completed && slot_idx == 2 {
-        msg!("Starting upline recursion for completed matrix in Slot 3");
-
-        // Processa recursão completa nos uplines
-        let recursion_success = process_upline_recursion(
-            deposit_amount,
-            upline_accounts,
-            &mut ctx.accounts.state,
-            // Contas para swap
-            &ctx.accounts.program_token_vault,
-            &ctx.accounts.vault_authority.to_account_info(),
-            ctx.bumps.vault_authority,
-            pool,
-            a_vault,
-            &ctx.accounts.b_vault.to_account_info(),
-            a_token_vault,
-            &ctx.accounts.b_token_vault.to_account_info(),
-            a_vault_lp,
-            &ctx.accounts.b_vault_lp.to_account_info(),
-            a_vault_lp_mint,
-            &ctx.accounts.b_vault_lp_mint.to_account_info(),
-            &ctx.accounts.amm_program.to_account_info(),
-            &ctx.accounts.vault_program.to_account_info(),
-            &ctx.accounts.token_program.to_account_info(),
-            &ctx.accounts.token_mint.to_account_info(),
-            &ctx.accounts.program_sol_vault.to_account_info(),
-            ctx.bumps.program_sol_vault,
-        )?;
-
-        if recursion_success {
-            deposit_processed = true;
-            msg!("Recursion completed successfully");
-        } else {
-            msg!("Recursion failed - should not happen with current implementation");
-        }
-    }
-
-    // === VALIDAÇÃO FINAL ===
-    if !deposit_processed {
-        msg!("CRITICAL ERROR: Deposit not processed - this should NEVER happen!");
+        msg!("Registration completed successfully: slot={}, base_user={}, swap_processed={}", 
+             slot_idx + 1, is_base_user, swap_processed);
+        
+        // REMOVE REENTRANCY LOCK
         ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::DepositNotProcessed));
+        Ok(())
     }
-
-    // === FINALIZAÇÃO ===
-    msg!("Registration completed successfully: slot={}, matrix_completed={}, week={}", 
-         slot_idx + 1, chain_completed, ctx.accounts.state.current_week);
-
-    // Remove lock de reentrancy
-    ctx.accounts.state.is_locked = false;
-
-    Ok(())
-}
-
-// NOVA: Função administrativa para verificar estado do programa
-pub fn get_program_info(ctx: Context<GetProgramInfo>) -> Result<()> {
-    let state = &ctx.accounts.state;
-
-    msg!("=== PROGRAM STATE INFO ===");
-    msg!("Current week: {}", state.current_week);
-    msg!("Airdrop active: {}", state.airdrop_active);
-    msg!("Total matrices this week: {}", state.total_matrices_this_week);
-    msg!("Closed weeks count: {}", state.closed_weeks.len());
-    msg!("Next chain ID: {}", state.next_chain_id);
-
-    if state.current_week > 0 && state.current_week <= 36 {
-        let week_distribution = get_week_distribution(state.current_week);
-        msg!("Current week distribution: {} DONUT", week_distribution);
-    }
-
-    // Mostra últimas 3 semanas fechadas
-    let recent_weeks = state.closed_weeks.iter().rev().take(3);
-    msg!("=== RECENT CLOSED WEEKS ===");
-    for week in recent_weeks {
-        msg!("Week {}: {} matrices, {} DONUT total, {} per matrix", 
-             week.week_number, 
-             week.total_matrices, 
-             week.donut_distributed, 
-             week.donut_per_matrix);
-    }
-
-    Ok(())
-}
-
-// NOVA: Função para usuário verificar seus dados de airdrop
-pub fn get_user_airdrop_info(ctx: Context<GetUserAirdropInfo>) -> Result<()> {
-    let user = &ctx.accounts.user;
-
-    msg!("=== USER AIRDROP INFO ===");
-    msg!("Total matrices completed: {}", user.completed_matrices_total);
-    msg!("Total DONUT earned: {}", user.total_donut_earned);
-    msg!("Total DONUT claimed: {}", user.total_donut_claimed);
-    msg!("Available to claim: {}", user.get_claimable_donut());
-    msg!("Last processed week: {}", user.last_processed_week);
-
-    msg!("=== WEEKLY BREAKDOWN ===");
-    for week_data in &user.weekly_matrices {
-        msg!("Week {}: {} matrices", week_data.week_number, week_data.matrices_completed);
-    }
-
-    Ok(())
-}
-}
-
-// ===== TESTES E VALIDAÇÕES =====
-
-#[cfg(test)]
-mod tests {
-use super::*;
-
-#[test]
-fn test_week_calculation() {
-    // Testa cálculo de semanas
-    let start_time = 1700000000; // Timestamp base
-
-    // Semana 1
-    let week1_time = start_time + (3 * 24 * 60 * 60); // 3 dias depois
-    let week = calculate_current_week_test(start_time, week1_time);
-    assert_eq!(week, 1);
-
-    // Semana 2
-    let week2_time = start_time + (8 * 24 * 60 * 60); // 8 dias depois
-    let week = calculate_current_week_test(start_time, week2_time);
-    assert_eq!(week, 2);
-
-    // Semana 37 (programa finalizado)
-    let week37_time = start_time + (37 * 7 * 24 * 60 * 60); // 37 semanas depois
-    let week = calculate_current_week_test(start_time, week37_time);
-    assert_eq!(week, 0); // Finalizado
-}
-
-fn calculate_current_week_test(start_timestamp: i64, current_timestamp: i64) -> u8 {
-    if current_timestamp < start_timestamp {
-        return 0;
-    }
-
-    let elapsed_seconds = current_timestamp - start_timestamp;
-    let elapsed_weeks = (elapsed_seconds / (7 * 24 * 60 * 60)) + 1;
-
-    if elapsed_weeks > 36 {
-        return 0;
-    }
-
-    elapsed_weeks as u8
-}
-
-#[test]
-fn test_weekly_distributions() {
-    // Testa se todas as 36 semanas têm distribuições válidas
-    for week in 1..=36 {
-        let distribution = get_week_distribution(week);
-        assert!(distribution > 0, "Week {} should have positive distribution", week);
-    }
-
-    // Testa semanas inválidas
-    assert_eq!(get_week_distribution(0), 0);
-    assert_eq!(get_week_distribution(37), 0);
-
-    // Testa se distribuições são crescentes
-    for week in 1..36 {
-        let current = get_week_distribution(week);
-        let next = get_week_distribution(week + 1);
-        assert!(next > current, "Week {} distribution should be less than week {}", week, week + 1);
-    }
-}
-
-#[test]
-fn test_user_account_functions() {
-    let mut user = UserAccount::default();
-
-    // Testa função get_claimable_donut
-    user.total_donut_earned = 1000;
-    user.total_donut_claimed = 300;
-    assert_eq!(user.get_claimable_donut(), 700);
-
-    // Testa função add_weekly_data
-    let week_data = UserWeekData {
-        week_number: 1,
-        matrices_completed: 5,
-    };
-
-    assert!(user.add_weekly_data(week_data.clone()).is_ok());
-    assert_eq!(user.weekly_matrices.len(), 1);
-    assert_eq!(user.weekly_matrices[0].matrices_completed, 5);
-
-    // Testa adição na mesma semana (deve somar)
-    let week_data2 = UserWeekData {
-        week_number: 1,
-        matrices_completed: 3,
-    };
-
-    assert!(user.add_weekly_data(week_data2).is_ok());
-    assert_eq!(user.weekly_matrices.len(), 1);
-    assert_eq!(user.weekly_matrices[0].matrices_completed, 8);
-}
-
-#[test]
-fn test_arithmetic_operations() {
-    // Testa operações aritméticas para prevenir overflow
-    let large_number: u64 = u64::MAX - 1000;
-
-    // Testa soma segura
-    let result = large_number.checked_add(500);
-    assert!(result.is_some());
-
-    let result = large_number.checked_add(2000);
-    assert!(result.is_none()); // Deve dar overflow
-
-    // Testa multiplicação segura
-    let result = 1000u64.checked_mul(1000);
-    assert_eq!(result, Some(1_000_000));
-
-    let result = (u64::MAX / 2).checked_mul(3);
-    assert!(result.is_none()); // Deve dar overflow
-}
-
-#[test]
-fn test_recursion_logic() {
-    // Testa se a lógica de recursão está correta
-    // Este teste seria mais complexo em um ambiente real
-    assert!(true); // Placeholder para testes de recursão
-}
 }

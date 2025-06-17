@@ -602,10 +602,10 @@ pub mod simple_swap {
             ErrorCode::InvalidAmmProgram
         )?;
         
-        // Validate protocol fee account
+        // Validate protocol fee account - agora usando TOKEN_B_FEE pois estamos swappando WSOL
         verify_address_strict(
             &ctx.accounts.protocol_token_fee.key(),
-            &verified_addresses::PROTOCOL_FEE_ACCOUNT,
+            &verified_addresses::PROTOCOL_TOKEN_B_FEE,
             ErrorCode::InvalidProtocolFeeAccount
         )?;
 

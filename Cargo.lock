@@ -1260,6 +1260,7 @@ dependencies = [
  "default-env",
  "solana-program",
  "solana-security-txt",
+ "spl-associated-token-account",
  "spl-token",
 ]
 

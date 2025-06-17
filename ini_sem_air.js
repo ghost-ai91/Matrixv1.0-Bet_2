@@ -21,10 +21,10 @@ const idl = require("./target/idl/referral_system.json")
 
 // Configurações principais - UPDATED for swap version
 const PROGRAM_ID = new PublicKey(
-  "4rB7DjRhDzGzeTmvWZFpe8h4yktL9xJTsrunGtErrjv3"
+  "CdKkHpRhewe3wJFpbouuQog5xTURycGgsyhyb7wjAVCv"
 )
 const TOKEN_MINT = new PublicKey(
-  "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"
+  "F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq"
 )
 const SPL_TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

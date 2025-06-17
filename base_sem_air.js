@@ -6,7 +6,7 @@ const path = require('path');
 
 // Receber parâmetros da linha de comando (opcional)
 const args = process.argv.slice(2);
-const walletPath = args[0] || '/Users/dark/.config/solana/id.json';
+const walletPath = args[0] || './carteiras/carteira1.json';
 const configPath = args[1] || './matriz-config.json';
 
 async function main() {
@@ -55,7 +55,7 @@ async function main() {
     
     // Configurar endereços importantes - ATUALIZADO COM NOVO PROGRAM ID
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "CSrEoisxJfho5DS76h3orCHmU2Fg9uTMP2DsoHobEwj1");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "2wn2R5TvFBjyCQRMrxYaRss7ijt3EgTUXwfvZGz2noTY");
     
     // Pool address para swap (METEORA)
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");

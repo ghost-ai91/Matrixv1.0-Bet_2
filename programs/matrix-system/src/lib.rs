@@ -126,7 +126,11 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-    pub const SIZE: usize = 1400;
+    // TAMANHO CORRETO CALCULADO:
+    // 32 (owner) + 32 (treasury) + 1 (locked) + 4 (upline_id) + 4 (chain_id) 
+    // + 1 (week) + 8 (matrices) + 8 (timestamp) + 1 (active) 
+    // + 4 (vec length) + (36 * 33) (snapshots) + padding
+    pub const SIZE: usize = 32 + 32 + 1 + 4 + 4 + 1 + 8 + 8 + 1 + 4 + (36 * 33) + 200;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
@@ -960,7 +964,7 @@ pub struct ClaimAirdrop<'info> {
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithoutReferrerDeposit<'info> {
     #[account(mut)]
-    pub state: Box<Account<'info, ProgramState>>,
+    pub state: Account<'info, ProgramState>,
     #[account(mut)]
     pub owner: Signer<'info>,
     #[account(mut)]
@@ -972,7 +976,7 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
         seeds = [b"user_account", user_wallet.key().as_ref()],
         bump
     )]
-    pub user: Box<Account<'info, UserAccount>>,
+    pub user: Account<'info, UserAccount>,
     
     /// User's WSOL account
     #[account(
@@ -980,7 +984,7 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
         associated_token::mint = wsol_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_wsol_account: Box<Account<'info, TokenAccount>>,
+    pub user_wsol_account: Account<'info, TokenAccount>,
     
     /// Account to receive DONUT tokens
     #[account(
@@ -989,7 +993,7 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
         associated_token::mint = token_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_donut_account: Box<Account<'info, TokenAccount>>,
+    pub user_donut_account: Account<'info, TokenAccount>,
     
     /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
@@ -1045,11 +1049,11 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithSolDeposit<'info> {
     #[account(mut)]
-    pub state: Box<Account<'info, ProgramState>>,
+    pub state: Account<'info, ProgramState>,
     #[account(mut)]
     pub user_wallet: Signer<'info>,
     #[account(mut)]
-    pub referrer: Box<Account<'info, UserAccount>>,
+    pub referrer: Account<'info, UserAccount>,
     #[account(mut)]
     pub referrer_wallet: SystemAccount<'info>,
     #[account(
@@ -1059,7 +1063,7 @@ pub struct RegisterWithSolDeposit<'info> {
         seeds = [b"user_account", user_wallet.key().as_ref()],
         bump
     )]
-    pub user: Box<Account<'info, UserAccount>>,
+    pub user: Account<'info, UserAccount>,
     
     /// User's WSOL account
     #[account(
@@ -1067,7 +1071,7 @@ pub struct RegisterWithSolDeposit<'info> {
         associated_token::mint = wsol_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_wsol_account: Box<Account<'info, TokenAccount>>,
+    pub user_wsol_account: Account<'info, TokenAccount>,
     
     /// Account to receive DONUT tokens
     #[account(
@@ -1076,7 +1080,7 @@ pub struct RegisterWithSolDeposit<'info> {
         associated_token::mint = token_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_donut_account: Box<Account<'info, TokenAccount>>,
+    pub user_donut_account: Account<'info, TokenAccount>,
     
     /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
@@ -1866,6 +1870,13 @@ pub mod referral_system {
         if available == 0 {
             return Err(error!(ErrorCode::NothingToClaim));
         }
+
+        // Verificar se o program_token_vault é o endereço correto
+        verify_address_strict(
+            &ctx.accounts.program_token_vault.key(),
+            &verified_addresses::PROGRAM_TOKEN_VAULT,
+            ErrorCode::InvalidProgramTokenVault
+        )?;
 
         let transfer_instruction = spl_token::instruction::transfer(
             &ctx.accounts.token_program.key(),

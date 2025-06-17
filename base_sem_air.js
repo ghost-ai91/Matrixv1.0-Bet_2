@@ -6,7 +6,7 @@ const path = require('path');
 
 // Receber parâmetros da linha de comando (opcional)
 const args = process.argv.slice(2);
-const walletPath = args[0] || './carteiras/carteira1.json';
+const walletPath = args[0] || '/Users/dark/.config/solana/id.json';
 const configPath = args[1] || './matriz-config.json';
 
 async function main() {
@@ -53,19 +53,25 @@ async function main() {
     const connection = new Connection('https://weathered-quiet-theorem.solana-devnet.quiknode.pro/198997b67cb51804baeb34ed2257274aa2b2d8c0', 'confirmed');
     console.log('Conectando à Devnet');
     
-    // Configurar endereços importantes
+    // Configurar endereços importantes - ATUALIZADO COM NOVO PROGRAM ID
     const MATRIX_PROGRAM_ID = new PublicKey(config.programId || "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
-    const STATE_ADDRESS = new PublicKey(config.stateAddress || "FAjhJ4GL3mcTX5w6NV5mEBBgSNFJRoPf7Si6GNXLqS8n");
+    const STATE_ADDRESS = new PublicKey(config.stateAddress || "CSrEoisxJfho5DS76h3orCHmU2Fg9uTMP2DsoHobEwj1");
     
-    // Pool address para swap
+    // Pool address para swap (METEORA)
     const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
     
-    // Pool e swap addresses
-    const POOL_AUTHORITY = new PublicKey("EGGBbZc7GKvGX4uBcaUYkHanKZPhKDJNqBj8s7RYJCNq");
+    // Derivar pool authority (PDA do programa Meteora)
+    const [POOL_AUTHORITY] = PublicKey.findProgramAddressSync(
+      [POOL_ADDRESS.toBuffer()],
+      new PublicKey("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo")
+    );
+    console.log("🔑 Pool Authority derivada: " + POOL_AUTHORITY.toString());
+    
+    // Pool vaults e fees - Estas são as contas corretas da pool
     const POOL_TOKEN_A_VAULT = new PublicKey("6m1wvYoPrwjAnbuGMqpMoodQaq4VnZXRjrzufXnPSjmj"); // DONUT vault
     const POOL_TOKEN_B_VAULT = new PublicKey("HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG"); // WSOL vault
-    const POOL_TOKEN_A_FEES = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz");
-    const POOL_PROGRAM = new PublicKey("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo");
+    const POOL_TOKEN_A_FEES = new PublicKey("CocstBGbeDVyTJWxbWs4docwWapVADAo1xXQSh9RfPMz"); // A fees account
+    const POOL_PROGRAM = new PublicKey("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"); // Meteora program
     
     // Chainlink addresses (Devnet)
     const CHAINLINK_PROGRAM = new PublicKey("HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny");
@@ -303,7 +309,6 @@ async function main() {
           userTokenAccount: userTokenAccount,
           wsolMint: WSOL_MINT,
           pool: POOL_ADDRESS,
-          poolAuthority: POOL_AUTHORITY,
           poolTokenAVault: POOL_TOKEN_A_VAULT,
           poolTokenBVault: POOL_TOKEN_B_VAULT,
           poolTokenAFees: POOL_TOKEN_A_FEES,

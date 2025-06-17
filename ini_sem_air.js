@@ -1,11 +1,9 @@
-// inicializacao.js - UPDATED VERSION WITHOUT MINT AND WSOL
+// inicializacao.js - Versão para contrato SEM MINT e COM SWAP
 const {
   Connection,
   Keypair,
   PublicKey,
   SystemProgram,
-  Transaction,
-  TransactionInstruction,
 } = require("@solana/web3.js")
 const { AnchorProvider, Program } = require("@coral-xyz/anchor")
 const fs = require("fs")
@@ -19,31 +17,13 @@ const configOutputPath = args[1] || "./matriz-config.json"
 // Carregue seu IDL compilado
 const idl = require("./target/idl/referral_system.json")
 
-// Configurações principais - UPDATED for simplified contract
+// Configurações principais - ATUALIZADO para contrato sem mint
 const PROGRAM_ID = new PublicKey(
   "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin"
 )
-const TOKEN_MINT = new PublicKey(
-  "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"
-)
-const SPL_TOKEN_PROGRAM_ID = new PublicKey(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-)
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-)
-const SYSVAR_RENT_PUBKEY = new PublicKey(
-  "SysvarRent111111111111111111111111111111111"
-)
 const MULTISIG_TREASURY = new PublicKey(
-  "5C16cVYXe7KRPz6rBD33qhcqyjvy42LP8tyJRNMXbKiL"
+  "QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv"
 )
-
-// Swap-related addresses
-const POOL_ADDRESS = new PublicKey("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU")
-const TOKEN_A_VAULT = new PublicKey("4ndfcH16GKY76bzDkKfyVwHMoF8oY75KES2VaAhUYksN") // DONUT vault
-const TOKEN_B_VAULT = new PublicKey("FERjPVNEa7Udq8CEv68h6tPL46Tq7ieE49HrE2wea3XT") // SOL vault
-const METEORA_SWAP_PROGRAM = new PublicKey("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB")
 
 // Função para carregar uma carteira a partir de um arquivo
 function loadWalletFromFile(filePath) {
@@ -55,41 +35,17 @@ function loadWalletFromFile(filePath) {
   )
 }
 
-// Função para formatar valores de token com 9 casas decimais
-function formatTokenAmount(amount) {
-  if (amount === 0) return "0"
-  const amountStr = amount.toString().padStart(10, "0")
-  const decimalPos = amountStr.length - 9
-  const integerPart = amountStr.substring(0, decimalPos) || "0"
-  const decimalPart = amountStr.substring(decimalPos)
-  return `${integerPart}.${decimalPart}`
-}
-
-// Função para calcular a ATA usando o método low-level
-async function findAssociatedTokenAddress(owner, mint) {
-  const seeds = [
-    owner.toBuffer(),
-    SPL_TOKEN_PROGRAM_ID.toBuffer(),
-    mint.toBuffer(),
-  ]
-  const [address] = PublicKey.findProgramAddressSync(
-    seeds,
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  )
-  return address
-}
-
 async function main() {
   try {
     console.log(
-      "🚀 INICIALIZANDO PROGRAMA DE MATRIZ SIMPLIFICADO - SEM MINT 🚀"
+      "🚀 INICIALIZANDO PROGRAMA DE MATRIZ (SEM MINT - COM SWAP) 🚀"
     )
     console.log(
       "================================================================="
     )
     console.log(`Usando arquivo de carteira: ${walletPath}`)
     console.log(`Multisig Treasury: ${MULTISIG_TREASURY.toString()}`)
-    console.log("🔧 Versão: Simplificada (Apenas SOL + Swap)")
+    console.log("🔄 Versão: Swap Only (Sem sistema de mint)")
 
     // Conectar à devnet
     const connection = new Connection(
@@ -116,6 +72,7 @@ async function main() {
       walletKeypair.publicKey
     )
     console.log(`💰 Saldo: ${balance / 1_000_000_000} SOL`)
+
     if (balance < 1_000_000_000) {
       console.warn(
         "⚠️ Saldo baixo! Recomendamos pelo menos 1 SOL para a inicialização."
@@ -153,7 +110,8 @@ async function main() {
     )
 
     // Inicializar o estado do programa
-    console.log("\n📝 INICIALIZANDO ESTADO SIMPLIFICADO DO PROGRAMA...")
+    console.log("\n📝 INICIALIZANDO ESTADO DO PROGRAMA (SEM MINT)...")
+
     try {
       const tx = await program.methods
         .initialize()
@@ -164,8 +122,8 @@ async function main() {
         })
         .signers([stateKeypair])
         .rpc()
-      
-      console.log("✅ PROGRAMA SIMPLIFICADO INICIALIZADO COM SUCESSO: " + tx)
+
+      console.log("✅ PROGRAMA INICIALIZADO COM SUCESSO: " + tx)
       console.log(
         `🔍 Link para explorador: https://explorer.solana.com/tx/${tx}?cluster=devnet`
       )
@@ -174,7 +132,7 @@ async function main() {
       const stateInfo = await program.account.programState.fetch(
         stateKeypair.publicKey
       )
-      console.log("\n📊 INFORMAÇÕES DO ESTADO SIMPLIFICADO:")
+      console.log("\n📊 INFORMAÇÕES DO ESTADO DA MATRIZ:")
       console.log("👑 Owner: " + stateInfo.owner.toString())
       console.log(
         "🏦 Multisig Treasury: " +
@@ -188,7 +146,7 @@ async function main() {
         "🆔 Próximo ID de chain: " + stateInfo.nextChainId.toString()
       )
 
-      // Verificar proteção reentrancy
+      // Verificar proteção de reentrancy
       if (stateInfo.isLocked !== undefined) {
         console.log(
           "🛡️ Proteção Reentrancy: " + (stateInfo.isLocked ? "ATIVADA" : "PRONTA")
@@ -202,10 +160,10 @@ async function main() {
         console.log("❌ ERRO: Campo is_locked não encontrado - contrato pode não estar atualizado!")
       }
 
-      // Verificar PDAs necessárias para integração SIMPLIFICADA
-      console.log("\n🔑 PDAS PARA INTEGRAÇÃO SIMPLIFICADA:")
-      
-      // PDA para vault de SOL (ainda necessária para reservas)
+      // Verificar PDAs necessárias para integração
+      console.log("\n🔑 PDAS PARA INTEGRAÇÃO:")
+
+      // PDA para vault de SOL
       const [programSolVault, programSolVaultBump] =
         PublicKey.findProgramAddressSync(
           [Buffer.from("program_sol_vault")],
@@ -219,37 +177,19 @@ async function main() {
           ")"
       )
 
-      console.log("\n🔧 ENDEREÇOS DE SWAP METEORA:")
-      console.log("🏊 Pool Address: " + POOL_ADDRESS.toString())
-      console.log("🪙 Token A Vault (DONUT): " + TOKEN_A_VAULT.toString())
-      console.log("💰 Token B Vault (SOL): " + TOKEN_B_VAULT.toString())
-      console.log("🔄 Meteora Swap Program: " + METEORA_SWAP_PROGRAM.toString())
-
-      // Gravar configuração simplificada
+      // Gravar todas as informações importantes em um arquivo de configuração
       const configData = {
         programId: PROGRAM_ID.toString(),
         stateAddress: stateKeypair.publicKey.toString(),
         statePrivateKey: Array.from(stateKeypair.secretKey),
-        tokenMint: TOKEN_MINT.toString(),
         programSolVault: programSolVault.toString(),
         programSolVaultBump,
         ownerWallet: walletKeypair.publicKey.toString(),
         multisigTreasury: MULTISIG_TREASURY.toString(),
-        
-        // Swap-related configuration
-        poolAddress: POOL_ADDRESS.toString(),
-        tokenAVault: TOKEN_A_VAULT.toString(), // DONUT
-        tokenBVault: TOKEN_B_VAULT.toString(), // SOL
-        meteoraSwapProgram: METEORA_SWAP_PROGRAM.toString(),
-        
-        // Contract version info
-        contractVersion: "simplified-no-mint-v1.0",
-        features: {
-          hasTokenMint: false,
-          hasWSolHandling: false,
-          hasSwapFunctionality: true,
-          hasReentrancyProtection: stateInfo.isLocked !== undefined,
-        },
+        // Informações da versão sem mint
+        version: "no-mint-swap-only",
+        hasReentrancyProtection: stateInfo.isLocked !== undefined,
+        contractVersion: "swap-only-v1.0",
       }
 
       // Criar diretório para o arquivo de configuração se não existir
@@ -257,11 +197,12 @@ async function main() {
       if (!fs.existsSync(configDir)) {
         fs.mkdirSync(configDir, { recursive: true })
       }
+
       fs.writeFileSync(
         configOutputPath,
         JSON.stringify(configData, null, 2)
       )
-      console.log(`\n💾 Configuração simplificada salva em ${configOutputPath}`)
+      console.log(`\n💾 Configuração salva em ${configOutputPath}`)
 
       console.log(
         "\n⚠️ IMPORTANTE: GUARDE ESTES ENDEREÇOS PARA USO FUTURO!"
@@ -278,40 +219,26 @@ async function main() {
       )
       console.log("🔑 PDA SOL VAULT: " + programSolVault.toString())
 
-      // Informações sobre funcionalidades
-      console.log("\n🔧 FUNCIONALIDADES ATIVAS:")
-      console.log("✅ Proteção contra Reentrancy Attacks")
-      console.log("✅ Sistema de Slots (1: Swap, 2: Reserve, 3: Pay)")
-      console.log("✅ Swap SOL->DONUT via Meteora")
-      console.log("✅ Reserva e pagamento de SOL")
-      console.log("❌ Mint de tokens (REMOVIDO)")
-      console.log("❌ Gestão WSOL (REMOVIDO)")
-
-      console.log("\n📋 PRÓXIMOS PASSOS:")
-      console.log("1. Use o script de registro para criar usuários base")
-      console.log("2. Os swaps SOL->DONUT serão feitos diretamente via Meteora")
-      console.log("3. Sistema funcionará apenas com SOL (sem tokens customizados)")
+      // Informações sobre a nova versão
+      console.log("\n🔄 RECURSOS DA VERSÃO SEM MINT:")
+      console.log("✅ Slot 1: Swap WSOL -> DONUT")
+      console.log("✅ Slot 2: Reserva SOL para referrer")
+      console.log("✅ Slot 3: Paga SOL ao referrer")
+      console.log("✅ Base User: Swap direto WSOL -> DONUT")
+      console.log("❌ Sistema de mint removido")
+      console.log("❌ Cálculo de tokens removido")
+      console.log("✅ Proteção contra reentrancy mantida")
 
     } catch (error) {
       console.error(
-        "❌ ERRO AO INICIALIZAR O ESTADO SIMPLIFICADO:",
+        "❌ ERRO AO INICIALIZAR O ESTADO DA MATRIZ:",
         error
       )
-      
+
+      // Exibir detalhes do erro para diagnóstico
       if (error.logs) {
         console.log("\n📋 LOGS DE ERRO:")
-        const relevantLogs = error.logs.filter(log => 
-          log.includes("Program log:") || 
-          log.includes("Error") || 
-          log.includes("error") ||
-          log.includes("ReentrancyLock")
-        );
-        
-        if (relevantLogs.length > 0) {
-          relevantLogs.forEach((log, i) => console.log(`${i}: ${log}`))
-        } else {
-          error.logs.forEach((log, i) => console.log(`${i}: ${log}`))
-        }
+        error.logs.forEach((log, i) => console.log(`${i}: ${log}`))
       }
     }
   } catch (error) {

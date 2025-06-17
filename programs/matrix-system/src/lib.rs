@@ -395,6 +395,7 @@ fn process_swap_wsol_to_donut<'info>(
     msg!("Starting swap: {} WSOL for DONUT (min: {})", amount_in, minimum_amount_out);
     
     // Build swap accounts
+    // NOTA: protocol_token_fee deve ser PROTOCOL_TOKEN_B_FEE pois estamos vendendo WSOL (token B)
     let swap_accounts = vec![
         solana_program::instruction::AccountMeta::new(pool.key(), false),
         solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false),
@@ -554,7 +555,7 @@ pub struct RegisterWithoutReferrer<'info> {
 // ===== PROGRAM MODULE =====
 
 #[program]
-pub mod simple_swap {
+pub mod matrix_system {
     use super::*;
 
     /// Initialize program state

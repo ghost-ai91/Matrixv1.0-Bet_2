@@ -126,7 +126,7 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-    pub const SIZE: usize = 32 + 32 + 1 + 4 + 4 + 1 + 8 + 8 + 1 + 4 + (36 * 33) + 100;
+    pub const SIZE: usize = 1400;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]

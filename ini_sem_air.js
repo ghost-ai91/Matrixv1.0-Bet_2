@@ -32,7 +32,7 @@ async function main() {
     console.log(`🏦 Treasury: ${MULTISIG_TREASURY.toString()}`);
 
     // Carregar IDL
-    const idlPath = "./target/idl/simple_swap.json";
+    const idlPath = "./target/idl/matrix_system.json";
     if (!fs.existsSync(idlPath)) {
       console.error("❌ IDL não encontrado! Compile o programa primeiro.");
       return;
@@ -137,6 +137,10 @@ async function main() {
 
       console.log("\n✅ INICIALIZAÇÃO COMPLETA!");
       console.log("🎯 Próximo passo: execute register_simple.js para testar o swap");
+      console.log("\n📌 Endereços importantes:");
+      console.log("- Protocol Token A Fee: 2B6tLDfiQAMSPAKuHqRMvhuQ5dRKDWkYF6m7ggtzmCY5");
+      console.log("- Protocol Token B Fee: 88fLv3iEY7ubFCjwCzfzA7FsPG8xSBFicSPS8T8fX4Kq");
+      console.log("  (Usamos B Fee pois vendemos WSOL no swap)");
 
     } catch (error) {
       console.error("❌ Erro ao inicializar:", error);

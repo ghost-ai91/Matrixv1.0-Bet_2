@@ -35,7 +35,10 @@ const {
     // Programas Meteora
     METEORA_VAULT_PROGRAM: new PublicKey("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi"),
     METEORA_AMM_PROGRAM: new PublicKey("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB"),
-    PROTOCOL_FEE_ACCOUNT: new PublicKey("FBSwbuckwK9cPU7zhCXL6HuQvWn8dAJBX46oRQonKQLa"),
+    
+    // Protocol Fee Accounts (corretos do Solscan)
+    PROTOCOL_TOKEN_A_FEE: new PublicKey("2B6tLDfiQAMSPAKuHqRMvhuQ5dRKDWkYF6m7ggtzmCY5"),
+    PROTOCOL_TOKEN_B_FEE: new PublicKey("88fLv3iEY7ubFCjwCzfzA7FsPG8xSBFicSPS8T8fX4Kq"),
   };
   
   // Programas do sistema
@@ -93,7 +96,7 @@ const {
       console.log("✅ Configuração carregada");
   
       // Carregar IDL
-      const idl = JSON.parse(fs.readFileSync('./target/idl/simple_swap.json', 'utf8'));
+      const idl = JSON.parse(fs.readFileSync('./target/idl/matrix_system.json', 'utf8'));
   
       // Conectar à devnet
       const connection = new Connection("https://api.devnet.solana.com", 'confirmed');
@@ -224,8 +227,6 @@ const {
         { pubkey: VERIFIED_ADDRESSES.A_VAULT_LP, isWritable: true, isSigner: false },
         { pubkey: VERIFIED_ADDRESSES.A_VAULT_LP_MINT, isWritable: true, isSigner: false },
         { pubkey: VERIFIED_ADDRESSES.A_TOKEN_VAULT, isWritable: true, isSigner: false },
-        // Protocol fee account needs to be writable for the swap
-        { pubkey: VERIFIED_ADDRESSES.PROTOCOL_FEE_ACCOUNT, isWritable: true, isSigner: false },
       ];
   
       console.log("\n📤 Executando registro com swap...");
@@ -249,7 +250,7 @@ const {
             bVaultLp: VERIFIED_ADDRESSES.B_VAULT_LP,
             vaultProgram: VERIFIED_ADDRESSES.METEORA_VAULT_PROGRAM,
             tokenMint: VERIFIED_ADDRESSES.TOKEN_MINT,
-            protocolTokenFee: VERIFIED_ADDRESSES.PROTOCOL_FEE_ACCOUNT,
+            protocolTokenFee: VERIFIED_ADDRESSES.PROTOCOL_TOKEN_B_FEE, // Usando B fee pois estamos swappando WSOL
             ammProgram: VERIFIED_ADDRESSES.METEORA_AMM_PROGRAM,
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,

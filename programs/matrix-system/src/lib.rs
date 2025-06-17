@@ -630,7 +630,7 @@ pub mod matrix_system {
 
         // SWAP WSOL FOR DONUT
         // Need to get vault A accounts from remaining_accounts
-        if ctx.remaining_accounts.len() < 5 {
+        if ctx.remaining_accounts.len() < 4 {
             return Err(error!(ErrorCode::MissingVaultAAccounts));
         }
         

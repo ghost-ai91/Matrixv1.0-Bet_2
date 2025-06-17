@@ -1348,6 +1348,8 @@ pub mod referral_system {
 
 // Correção da função register_with_sol_deposit - PARTE DA RECURSÃO
 
+// Aqui estão as correções para a função register_with_sol_deposit
+
 pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDeposit<'info>>, 
     deposit_amount: u64
@@ -1417,7 +1419,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         return Err(error!(ErrorCode::InsufficientDeposit));
     }
 
-    // Cria usuário (mantém como está)
+    // Cria usuário
     let referrer_entry = UplineEntry {
         pda: ctx.accounts.referrer.key(),
         wallet: ctx.accounts.referrer_wallet.key(),
@@ -1432,10 +1434,12 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     }
     new_upline.push(referrer_entry);
 
-    let state = &mut ctx.accounts.state;
-    let upline_id = state.next_upline_id;
-    let chain_id = state.next_chain_id;
-    state.next_chain_id += 1;
+    // Captura valores antes de emprestar state como mut
+    let upline_id = ctx.accounts.state.next_upline_id;
+    let chain_id = ctx.accounts.state.next_chain_id;
+    let current_week = ctx.accounts.state.current_week;
+    
+    ctx.accounts.state.next_chain_id += 1;
 
     let user = &mut ctx.accounts.user;
     user.is_registered = true;
@@ -1531,11 +1535,11 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                 user: ctx.accounts.user_wallet.key(),
                 sol_amount: deposit_amount,
                 donut_amount: donut_balance,
-                week_number: ctx.accounts.state.current_week,
+                week_number: current_week,
             });
         },
 
-        1 => { // SLOT 2: RESERVA SOL (sem tokens)
+        1 => { // SLOT 2: RESERVA SOL
             process_reserve_sol(
                 &ctx.accounts.user_wallet.to_account_info(),
                 &ctx.accounts.program_sol_vault.to_account_info(),
@@ -1544,7 +1548,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
             ctx.accounts.referrer.reserved_sol = deposit_amount;
         },
 
-        2 => { // SLOT 3: PAGAMENTO (apenas SOL)
+        2 => { // SLOT 3: PAGAMENTO
             if ctx.accounts.referrer.reserved_sol > 0 {
                 process_pay_referrer(
                     &ctx.accounts.program_sol_vault.to_account_info(),
@@ -1565,11 +1569,14 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         }
     }
 
+    // Captura next_chain_id antes da atualização
+    let next_chain_id_for_referrer = ctx.accounts.state.next_chain_id;
+
     // Processa matriz do referrer
     let (chain_completed, upline_pubkey) = process_referrer_chain(
         &ctx.accounts.user.key(),
         &mut ctx.accounts.referrer,
-        ctx.accounts.state.next_chain_id,
+        next_chain_id_for_referrer,
     )?;
 
     if chain_completed {
@@ -1577,7 +1584,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         ctx.accounts.state.next_chain_id += 1;
     }
 
-    // ===== AQUI COMEÇA A VERDADEIRA RECURSÃO =====
+    // ===== RECURSÃO - Usando state diretamente =====
     if chain_completed && slot_idx == 2 {
         let mut current_user_pubkey = upline_pubkey;
         let mut current_deposit = deposit_amount;
@@ -1703,7 +1710,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                                 user: ctx.accounts.user_wallet.key(),
                                 sol_amount: current_deposit,
                                 donut_amount: donut_balance,
-                                week_number: ctx.accounts.state.current_week,
+                                week_number: current_week,
                             });
                             
                             current_deposit = 0;
@@ -1752,10 +1759,10 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                     
                     // Verifica se completou matriz
                     if upline_data.chain.filled_slots == 3 {
-                        record_matrix_completion(&mut upline_data, state)?;
+                        record_matrix_completion(&mut upline_data, &mut ctx.accounts.state)?;
                         
-                        upline_data.chain.id = state.next_chain_id;
-                        state.next_chain_id += 1;
+                        upline_data.chain.id = ctx.accounts.state.next_chain_id;
+                        ctx.accounts.state.next_chain_id += 1;
                         upline_data.chain.slots = [None, None, None];
                         upline_data.chain.filled_slots = 0;
                         
@@ -1842,7 +1849,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                 user: ctx.accounts.user_wallet.key(),
                 sol_amount: current_deposit,
                 donut_amount: donut_balance,
-                week_number: ctx.accounts.state.current_week,
+                week_number: current_week,
             });
         }
     }

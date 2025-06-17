@@ -9,7 +9,7 @@ use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("CdKkHpRhewe3wJFpbouuQog5xTURycGgsyhyb7wjAVCv");
+declare_id!("EWV1YNfhBTacafij2ffJ7RNyMuBVKNqtVgpyMiwX7syi");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -85,7 +85,7 @@ pub mod verified_addresses {
     pub static PROTOCOL_TOKEN_B_FEE: Pubkey = solana_program::pubkey!("88fLv3iEY7ubFCjwCzfzA7FsPG8xSBFicSPS8T8fX4Kq");
     
     // Program token vault for airdrop
-    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("6JvVz3dMmVRCQ216tzdo3iQvfiMwLy59oWyTo8hwWSsQ");
+    pub static PROGRAM_TOKEN_VAULT: Pubkey = solana_program::pubkey!("3Y1sooTiwXUicaCB7VZroB4YDWdLpT8bRAaTtQFLetfj");
 }
 
 pub mod admin_addresses {

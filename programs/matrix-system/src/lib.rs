@@ -2,13 +2,13 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("4rB7DjRhDzGzeTmvWZFpe8h4yktL9xJTsrunGtErrjv3");
+declare_id!("G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -1484,24 +1484,24 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// Structure for registration with SOL in a single transaction
+// Structure for registration with SOL in a single transaction - OPTIMIZED WITH BOX
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithSolDeposit<'info> {
     #[account(mut)]
-    pub state: Account<'info, ProgramState>,
+    pub state: Box<Account<'info, ProgramState>>, // BOX
 
     #[account(mut)]
     pub user_wallet: Signer<'info>,
 
     // Reference accounts
     #[account(mut)]
-    pub referrer: Account<'info, UserAccount>,
+    pub referrer: Box<Account<'info, UserAccount>>, // BOX
     
     #[account(mut)]
     pub referrer_wallet: SystemAccount<'info>,
 
-    // User account
+    // User account - BOXED to reduce stack size
     #[account(
         init,
         payer = user_wallet,
@@ -1509,25 +1509,25 @@ pub struct RegisterWithSolDeposit<'info> {
         seeds = [b"user_account", user_wallet.key().as_ref()],
         bump
     )]
-    pub user: Account<'info, UserAccount>,
+    pub user: Box<Account<'info, UserAccount>>, // BOX
 
-    // New WSOL ATA account
+    // New WSOL ATA account - BOXED
     #[account(
         init,
         payer = user_wallet,
         associated_token::mint = wsol_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_wsol_account: Account<'info, TokenAccount>,
+    pub user_wsol_account: Box<Account<'info, TokenAccount>>, // BOX
     
-    // Account to receive DONUT tokens
+    // Account to receive DONUT tokens - BOXED
     #[account(
         init_if_needed,
         payer = user_wallet,
         associated_token::mint = token_mint,
         associated_token::authority = user_wallet
     )]
-    pub user_donut_account: Account<'info, TokenAccount>,
+    pub user_donut_account: Box<Account<'info, TokenAccount>>, // BOX
     
     // WSOL mint
     /// CHECK: This is the fixed WSOL mint address

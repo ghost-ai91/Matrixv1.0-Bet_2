@@ -224,8 +224,8 @@ const {
         { pubkey: VERIFIED_ADDRESSES.A_VAULT_LP, isWritable: true, isSigner: false },
         { pubkey: VERIFIED_ADDRESSES.A_VAULT_LP_MINT, isWritable: true, isSigner: false },
         { pubkey: VERIFIED_ADDRESSES.A_TOKEN_VAULT, isWritable: true, isSigner: false },
-        // Dummy account para manter compatibilidade com o contrato original
-        { pubkey: SystemProgram.programId, isWritable: false, isSigner: false },
+        // Protocol fee account needs to be writable for the swap
+        { pubkey: VERIFIED_ADDRESSES.PROTOCOL_FEE_ACCOUNT, isWritable: true, isSigner: false },
       ];
   
       console.log("\n📤 Executando registro com swap...");

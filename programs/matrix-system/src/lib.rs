@@ -29,7 +29,7 @@ pub mod verified_addresses {
     pub static B_VAULT_LP_MINT: Pubkey = solana_program::pubkey!("BvoAjwEDhpLzs3jtu4H72j96ShKT5rvZE9RP1vgpfSM");
     
     // Token addresses
-    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz");
+    pub static TOKEN_MINT: Pubkey = solana_program::pubkey!("F1vCKXMix75KigbwZUXkVU97NiE1H2ToopttH67ydqvq");
     pub static WSOL_MINT: Pubkey = solana_program::pubkey!("So11111111111111111111111111111111111111112");
     
     // CRITICAL SECURITY ADDRESSES 
@@ -37,7 +37,10 @@ pub mod verified_addresses {
     
     // Meteora AMM addresses
     pub static METEORA_AMM_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
-    pub static PROTOCOL_FEE_ACCOUNT: Pubkey = solana_program::pubkey!("FBSwbuckwK9cPU7zhCXL6HuQvWn8dAJBX46oRQonKQLa");
+    
+    // Protocol fee accounts (from Solscan)
+    pub static PROTOCOL_TOKEN_A_FEE: Pubkey = solana_program::pubkey!("2B6tLDfiQAMSPAKuHqRMvhuQ5dRKDWkYF6m7ggtzmCY5");
+    pub static PROTOCOL_TOKEN_B_FEE: Pubkey = solana_program::pubkey!("88fLv3iEY7ubFCjwCzfzA7FsPG8xSBFicSPS8T8fX4Kq");
 }
 
 // ===== ADMIN ADDRESSES =====
@@ -395,6 +398,7 @@ fn process_swap_wsol_to_donut<'info>(
     msg!("Starting swap: {} WSOL for DONUT (min: {})", amount_in, minimum_amount_out);
     
     // Build swap accounts
+    // NOTA: protocol_token_fee deve ser PROTOCOL_TOKEN_B_FEE pois estamos vendendo WSOL (token B)
     let swap_accounts = vec![
         solana_program::instruction::AccountMeta::new(pool.key(), false),
         solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false),
@@ -554,7 +558,7 @@ pub struct RegisterWithoutReferrer<'info> {
 // ===== PROGRAM MODULE =====
 
 #[program]
-pub mod simple_swap {
+pub mod matrix_system {
     use super::*;
 
     /// Initialize program state
@@ -602,10 +606,10 @@ pub mod simple_swap {
             ErrorCode::InvalidAmmProgram
         )?;
         
-        // Validate protocol fee account
+        // Validate protocol fee account - using TOKEN_B_FEE since we're swapping WSOL
         verify_address_strict(
             &ctx.accounts.protocol_token_fee.key(),
-            &verified_addresses::PROTOCOL_FEE_ACCOUNT,
+            &verified_addresses::PROTOCOL_TOKEN_B_FEE,
             ErrorCode::InvalidProtocolFeeAccount
         )?;
 

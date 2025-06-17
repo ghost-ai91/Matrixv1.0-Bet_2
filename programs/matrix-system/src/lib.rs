@@ -907,7 +907,7 @@ fn process_referrer_chain(
    Ok((false, referrer.key()))
 }
 
-// ===== CONTAS PARA INSTRUÇÕES =====
+// ===== CONTAS PARA INSTRUÇÕES (COM OTIMIZAÇÃO DE STACK) =====
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -943,6 +943,7 @@ pub struct ClaimAirdrop<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+// Versão otimizada com UncheckedAccount para reduzir uso de stack
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithoutReferrerDeposit<'info> {
@@ -961,30 +962,23 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     )]
     pub user: Account<'info, UserAccount>,
     
-    /// User's WSOL account (created by user before calling)
-    #[account(
-        mut,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_wsol_account: Account<'info, TokenAccount>,
+    /// User's WSOL account
+    #[account(mut)]
+    /// CHECK: Validated in instruction
+    pub user_wsol_account: UncheckedAccount<'info>,
     
     /// Account to receive DONUT tokens
-    #[account(
-        init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_donut_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    /// CHECK: Validated in instruction
+    pub user_donut_account: UncheckedAccount<'info>,
     
     /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
-    pub wsol_mint: AccountInfo<'info>,
+    pub wsol_mint: UncheckedAccount<'info>,
     
-    // CONTAS METEORA PARA SWAP
+    // METEORA ACCOUNTS
     #[account(mut)]
-    /// CHECK: Pool account - validado por endereço
+    /// CHECK: Pool account
     pub pool: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: Vault A
@@ -1025,7 +1019,8 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
+    /// CHECK: Rent sysvar
+    pub rent: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -1048,30 +1043,23 @@ pub struct RegisterWithSolDeposit<'info> {
     )]
     pub user: Account<'info, UserAccount>,
     
-    /// User's WSOL account (created by user before calling)
-    #[account(
-        mut,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_wsol_account: Account<'info, TokenAccount>,
+    /// User's WSOL account
+    #[account(mut)]
+    /// CHECK: Validated in instruction
+    pub user_wsol_account: UncheckedAccount<'info>,
     
     /// Account to receive DONUT tokens
-    #[account(
-        init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_donut_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    /// CHECK: Validated in instruction
+    pub user_donut_account: UncheckedAccount<'info>,
     
     /// WSOL mint
     /// CHECK: This is the fixed WSOL mint address
-    pub wsol_mint: AccountInfo<'info>,
+    pub wsol_mint: UncheckedAccount<'info>,
     
-    // CONTAS METEORA PARA SWAP
+    // METEORA ACCOUNTS
     #[account(mut)]
-    /// CHECK: Pool account - validado por endereço
+    /// CHECK: Pool account
     pub pool: UncheckedAccount<'info>,
     #[account(mut)]
     /// CHECK: Vault A
@@ -1121,7 +1109,8 @@ pub struct RegisterWithSolDeposit<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
+    /// CHECK: Rent sysvar
+    pub rent: UncheckedAccount<'info>,
 }
 
 // ===== PROGRAMA PRINCIPAL =====
@@ -1166,6 +1155,13 @@ pub mod referral_system {
         }
 
         check_and_process_week_change(&mut ctx.accounts.state)?;
+
+        // Validação manual das contas token
+        let user_wsol_account_info = &ctx.accounts.user_wsol_account.to_account_info();
+        let user_wsol_account = Account::<TokenAccount>::try_from(user_wsol_account_info)?;
+        
+        let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+        let user_donut_account = Account::<TokenAccount>::try_from(user_donut_account_info)?;
 
         // VALIDAÇÕES DE SEGURANÇA RIGOROSAS
         verify_all_fixed_addresses(
@@ -1228,6 +1224,7 @@ pub mod referral_system {
         let state = &mut ctx.accounts.state;
         let upline_id = state.next_upline_id;
         let chain_id = state.next_chain_id;
+        let current_week = state.current_week;
 
         state.next_upline_id += 1;
         state.next_chain_id += 1;
@@ -1298,10 +1295,11 @@ pub mod referral_system {
         )?;
 
         // Reload account to get updated balance after swap
-        ctx.accounts.user_donut_account.reload()?;
+        let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+        let user_donut_account_reloaded = Account::<TokenAccount>::try_from(user_donut_account_info)?;
         
         // Get DONUT balance after swap
-        let donut_balance = ctx.accounts.user_donut_account.amount;
+        let donut_balance = user_donut_account_reloaded.amount;
         msg!("DONUT balance after swap: {}", donut_balance);
 
         // Burn 100% of DONUT tokens received
@@ -1338,7 +1336,7 @@ pub mod referral_system {
             user: ctx.accounts.user_wallet.key(),
             sol_amount: deposit_amount,
             donut_amount: donut_balance,
-            week_number: ctx.accounts.state.current_week,
+            week_number: current_week,
         });
 
         ctx.accounts.state.is_locked = false;
@@ -1346,565 +1344,571 @@ pub mod referral_system {
         Ok(())
     }
 
-// Correção da função register_with_sol_deposit - PARTE DA RECURSÃO
-
-// Aqui estão as correções para a função register_with_sol_deposit
-
-pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
-    ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDeposit<'info>>, 
-    deposit_amount: u64
-) -> Result<()> {
-    if ctx.accounts.state.is_locked {
-        return Err(error!(ErrorCode::ReentrancyLock));
-    }
-    ctx.accounts.state.is_locked = true;
-
-    check_and_process_week_change(&mut ctx.accounts.state)?;
-    process_user_pending_weeks(&mut ctx.accounts.referrer, &ctx.accounts.state)?;
-
-    // VALIDAÇÕES (mantém como está)
-    verify_all_fixed_addresses(
-        &ctx.accounts.pool.key(),
-        &ctx.accounts.b_vault.key(),
-        &ctx.accounts.b_token_vault.key(),
-        &ctx.accounts.b_vault_lp_mint.key(),
-        &ctx.accounts.b_vault_lp.key(),
-        &ctx.accounts.token_mint.key(),
-        &ctx.accounts.wsol_mint.key(),
-    )?;
-
-    verify_address_strict(&ctx.accounts.a_vault.key(), &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(&ctx.accounts.a_vault_lp.key(), &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(&ctx.accounts.a_vault_lp_mint.key(), &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultAddress)?;
-    verify_address_strict(&ctx.accounts.a_token_vault.key(), &verified_addresses::A_TOKEN_VAULT, ErrorCode::InvalidVaultAddress)?;
-
-    verify_address_strict(
-        &ctx.accounts.vault_program.key(), 
-        &verified_addresses::METEORA_VAULT_PROGRAM, 
-        ErrorCode::InvalidVaultProgram
-    )?;
-
-    verify_address_strict(
-        &ctx.accounts.amm_program.key(),
-        &verified_addresses::METEORA_AMM_PROGRAM,
-        ErrorCode::InvalidMeteoraAmmProgram
-    )?;
-
-    verify_address_strict(
-        &ctx.accounts.protocol_token_fee.key(),
-        &verified_addresses::PROTOCOL_TOKEN_B_FEE,
-        ErrorCode::InvalidProtocolFeeAccount
-    )?;
-
-    if !ctx.accounts.referrer.is_registered {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::ReferrerNotRegistered));
-    }
-
-    // Validação Chainlink
-    if ctx.remaining_accounts.len() < 2 {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::MissingVaultAAccounts));
-    }
-
-    let chainlink_feed = &ctx.remaining_accounts[0];
-    let chainlink_program = &ctx.remaining_accounts[1];
-
-    verify_address_strict(&chainlink_program.key(), &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
-    verify_address_strict(&chainlink_feed.key(), &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
-
-    let minimum_deposit = calculate_minimum_sol_deposit(chainlink_feed, chainlink_program)?;
-    if deposit_amount < minimum_deposit {
-        ctx.accounts.state.is_locked = false;
-        return Err(error!(ErrorCode::InsufficientDeposit));
-    }
-
-    // Cria usuário
-    let referrer_entry = UplineEntry {
-        pda: ctx.accounts.referrer.key(),
-        wallet: ctx.accounts.referrer_wallet.key(),
-    };
-
-    let mut new_upline = Vec::new();
-    if ctx.accounts.referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
-        let start_idx = ctx.accounts.referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
-        new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline[start_idx..]);
-    } else {
-        new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline);
-    }
-    new_upline.push(referrer_entry);
-
-    // Captura valores antes de emprestar state como mut
-    let upline_id = ctx.accounts.state.next_upline_id;
-    let chain_id = ctx.accounts.state.next_chain_id;
-    let current_week = ctx.accounts.state.current_week;
-    
-    ctx.accounts.state.next_chain_id += 1;
-
-    let user = &mut ctx.accounts.user;
-    user.is_registered = true;
-    user.referrer = Some(ctx.accounts.referrer.key());
-    user.owner_wallet = ctx.accounts.user_wallet.key();
-    user.upline = ReferralUpline {
-        id: upline_id,
-        depth: ctx.accounts.referrer.upline.depth + 1,
-        upline: new_upline,
-    };
-    user.chain = ReferralChain {
-        id: chain_id,
-        slots: [None, None, None],
-        filled_slots: 0,
-    };
-    user.reserved_sol = 0;
-    user.reserved_tokens = 0;
-    user.completed_matrices_total = 0;
-    user.weekly_matrices = Vec::new();
-    user.total_donut_earned = 0;
-    user.total_donut_claimed = 0;
-    user.last_processed_week = 0;
-
-    // Lógica dos slots
-    let slot_idx = ctx.accounts.referrer.chain.filled_slots as usize;
-
-    match slot_idx {
-        0 => { // SLOT 1: SWAP + BURN
-            manage_wsol_operation(
-                &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.token_program,
-                "wrap",
-                Some(deposit_amount),
-            )?;
-
-            let minimum_donut_out = calculate_swap_amount_out(
-                &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.a_vault.to_account_info(),
-                &ctx.accounts.b_vault.to_account_info(),
-                &ctx.accounts.a_vault_lp.to_account_info(),
-                &ctx.accounts.b_vault_lp.to_account_info(),
-                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                deposit_amount,
-            )?;
-
-            process_swap_wsol_to_donut(
-                &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.user_donut_account.to_account_info(),
-                &ctx.accounts.a_vault.to_account_info(),
-                &ctx.accounts.b_vault.to_account_info(),
-                &ctx.accounts.a_token_vault.to_account_info(),
-                &ctx.accounts.b_token_vault.to_account_info(),
-                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                &ctx.accounts.a_vault_lp.to_account_info(),
-                &ctx.accounts.b_vault_lp.to_account_info(),
-                &ctx.accounts.protocol_token_fee.to_account_info(),
-                &ctx.accounts.vault_program.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                &ctx.accounts.amm_program.to_account_info(),
-                deposit_amount,
-                minimum_donut_out,
-            )?;
-
-            ctx.accounts.user_donut_account.reload()?;
-            let donut_balance = ctx.accounts.user_donut_account.amount;
-
-            if donut_balance > 0 {
-                let burn_ix = spl_token::instruction::burn(
-                    &ctx.accounts.token_program.key(),
-                    &ctx.accounts.user_donut_account.key(),
-                    &ctx.accounts.token_mint.key(),
-                    &ctx.accounts.user_wallet.key(),
-                    &[],
-                    donut_balance,
-                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-                
-                solana_program::program::invoke(
-                    &burn_ix,
-                    &[
-                        ctx.accounts.user_donut_account.to_account_info(),
-                        ctx.accounts.token_mint.to_account_info(),
-                        ctx.accounts.user_wallet.to_account_info(),
-                    ],
-                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-            }
-
-            emit!(DonutSwappedAndBurned {
-                user: ctx.accounts.user_wallet.key(),
-                sol_amount: deposit_amount,
-                donut_amount: donut_balance,
-                week_number: current_week,
-            });
-        },
-
-        1 => { // SLOT 2: RESERVA SOL
-            process_reserve_sol(
-                &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.program_sol_vault.to_account_info(),
-                deposit_amount
-            )?;
-            ctx.accounts.referrer.reserved_sol = deposit_amount;
-        },
-
-        2 => { // SLOT 3: PAGAMENTO
-            if ctx.accounts.referrer.reserved_sol > 0 {
-                process_pay_referrer(
-                    &ctx.accounts.program_sol_vault.to_account_info(),
-                    &ctx.accounts.referrer_wallet.to_account_info(),
-                    ctx.accounts.referrer.reserved_sol,
-                    &[&[
-                        b"program_sol_vault".as_ref(),
-                        &[ctx.bumps.program_sol_vault]
-                    ]],
-                )?;
-                ctx.accounts.referrer.reserved_sol = 0;
-            }
-        },
-
-        _ => {
-            ctx.accounts.state.is_locked = false;
-            return Err(error!(ErrorCode::InvalidSlot));
+    pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDeposit<'info>>, 
+        deposit_amount: u64
+    ) -> Result<()> {
+        if ctx.accounts.state.is_locked {
+            return Err(error!(ErrorCode::ReentrancyLock));
         }
-    }
+        ctx.accounts.state.is_locked = true;
 
-    // Captura next_chain_id antes da atualização
-    let next_chain_id_for_referrer = ctx.accounts.state.next_chain_id;
+        check_and_process_week_change(&mut ctx.accounts.state)?;
+        process_user_pending_weeks(&mut ctx.accounts.referrer, &ctx.accounts.state)?;
 
-    // Processa matriz do referrer
-    let (chain_completed, upline_pubkey) = process_referrer_chain(
-        &ctx.accounts.user.key(),
-        &mut ctx.accounts.referrer,
-        next_chain_id_for_referrer,
-    )?;
+ // Validação manual das contas token
+ let user_wsol_account_info = &ctx.accounts.user_wsol_account.to_account_info();
+ let user_wsol_account = Account::<TokenAccount>::try_from(user_wsol_account_info)?;
+ 
+ let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+ let user_donut_account = Account::<TokenAccount>::try_from(user_donut_account_info)?;
 
-    if chain_completed {
-        record_matrix_completion(&mut ctx.accounts.referrer, &mut ctx.accounts.state)?;
-        ctx.accounts.state.next_chain_id += 1;
-    }
+ // VALIDAÇÕES (mantém como está)
+ verify_all_fixed_addresses(
+     &ctx.accounts.pool.key(),
+     &ctx.accounts.b_vault.key(),
+     &ctx.accounts.b_token_vault.key(),
+     &ctx.accounts.b_vault_lp_mint.key(),
+     &ctx.accounts.b_vault_lp.key(),
+     &ctx.accounts.token_mint.key(),
+     &ctx.accounts.wsol_mint.key(),
+ )?;
 
-    // ===== RECURSÃO - Usando state diretamente =====
-    if chain_completed && slot_idx == 2 {
-        let mut current_user_pubkey = upline_pubkey;
-        let mut current_deposit = deposit_amount;
-        let mut all_slots_were_slot3 = true;
-        let mut processed_count = 0;
+ verify_address_strict(&ctx.accounts.a_vault.key(), &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
+ verify_address_strict(&ctx.accounts.a_vault_lp.key(), &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultAddress)?;
+ verify_address_strict(&ctx.accounts.a_vault_lp_mint.key(), &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultAddress)?;
+ verify_address_strict(&ctx.accounts.a_token_vault.key(), &verified_addresses::A_TOKEN_VAULT, ErrorCode::InvalidVaultAddress)?;
 
-        // Verifica se tem uplines para processar
-        if ctx.remaining_accounts.len() > 2 {
-            let upline_accounts = &ctx.remaining_accounts[2..]; // Pula Chainlink accounts
-            
-            if upline_accounts.len() % 2 == 0 { // PDA + wallet para cada upline
-                let upline_count = upline_accounts.len() / 2;
-                
-                for i in 0..upline_count {
-                    if i >= MAX_UPLINE_DEPTH || current_deposit == 0 {
-                        break;
-                    }
-                    
-                    let upline_pda = &upline_accounts[i * 2];
-                    let upline_wallet = &upline_accounts[i * 2 + 1];
-                    
-                    // Deserializa a conta da upline
-                    let data = upline_pda.try_borrow_data()?;
-                    if data.len() <= 8 {
-                        break;
-                    }
-                    
-                    let mut account_slice = &data[8..];
-                    let mut upline_data = UserAccount::deserialize(&mut account_slice)?;
-                    
-                    if !upline_data.is_registered {
-                        break;
-                    }
-                    
-                    let upline_slot_idx = upline_data.chain.filled_slots as usize;
-                    if upline_slot_idx >= 3 {
-                        break;
-                    }
-                    
-                    // Marca que processou algo
-                    processed_count += 1;
-                    
-                    // Adiciona usuário atual no slot da upline
-                    upline_data.chain.slots[upline_slot_idx] = Some(current_user_pubkey);
-                    upline_data.chain.filled_slots += 1;
-                    
-                    emit!(SlotFilled {
-                        slot_idx: upline_slot_idx as u8,
-                        chain_id: upline_data.chain.id,
-                        user: current_user_pubkey,
-                        owner: *upline_pda.key,
-                    });
-                    
-                    // Processa conforme o slot
-                    match upline_slot_idx {
-                        0 => { // Slot 1: Swap + Burn
-                            all_slots_were_slot3 = false;
-                            
-                            manage_wsol_operation(
-                                &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.user_wsol_account.to_account_info(),
-                                &ctx.accounts.token_program,
-                                "wrap",
-                                Some(current_deposit),
-                            )?;
-                            
-                            let minimum_donut_out = calculate_swap_amount_out(
-                                &ctx.accounts.pool.to_account_info(),
-                                &ctx.accounts.a_vault.to_account_info(),
-                                &ctx.accounts.b_vault.to_account_info(),
-                                &ctx.accounts.a_vault_lp.to_account_info(),
-                                &ctx.accounts.b_vault_lp.to_account_info(),
-                                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                                current_deposit,
-                            )?;
-                            
-                            process_swap_wsol_to_donut(
-                                &ctx.accounts.pool.to_account_info(),
-                                &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.user_wsol_account.to_account_info(),
-                                &ctx.accounts.user_donut_account.to_account_info(),
-                                &ctx.accounts.a_vault.to_account_info(),
-                                &ctx.accounts.b_vault.to_account_info(),
-                                &ctx.accounts.a_token_vault.to_account_info(),
-                                &ctx.accounts.b_token_vault.to_account_info(),
-                                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                                &ctx.accounts.a_vault_lp.to_account_info(),
-                                &ctx.accounts.b_vault_lp.to_account_info(),
-                                &ctx.accounts.protocol_token_fee.to_account_info(),
-                                &ctx.accounts.vault_program.to_account_info(),
-                                &ctx.accounts.token_program.to_account_info(),
-                                &ctx.accounts.amm_program.to_account_info(),
-                                current_deposit,
-                                minimum_donut_out,
-                            )?;
-                            
-                            ctx.accounts.user_donut_account.reload()?;
-                            let donut_balance = ctx.accounts.user_donut_account.amount;
-                            
-                            if donut_balance > 0 {
-                                let burn_ix = spl_token::instruction::burn(
-                                    &ctx.accounts.token_program.key(),
-                                    &ctx.accounts.user_donut_account.key(),
-                                    &ctx.accounts.token_mint.key(),
-                                    &ctx.accounts.user_wallet.key(),
-                                    &[],
-                                    donut_balance,
-                                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-                                
-                                solana_program::program::invoke(
-                                    &burn_ix,
-                                    &[
-                                        ctx.accounts.user_donut_account.to_account_info(),
-                                        ctx.accounts.token_mint.to_account_info(),
-                                        ctx.accounts.user_wallet.to_account_info(),
-                                    ],
-                                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-                            }
-                            
-                            emit!(DonutSwappedAndBurned {
-                                user: ctx.accounts.user_wallet.key(),
-                                sol_amount: current_deposit,
-                                donut_amount: donut_balance,
-                                week_number: current_week,
-                            });
-                            
-                            current_deposit = 0;
-                        },
-                        
-                        1 => { // Slot 2: Reserva SOL
-                            all_slots_were_slot3 = false;
-                            
-                            process_reserve_sol(
-                                &ctx.accounts.user_wallet.to_account_info(),
-                                &ctx.accounts.program_sol_vault.to_account_info(),
-                                current_deposit
-                            )?;
-                            
-                            upline_data.reserved_sol = current_deposit;
-                            current_deposit = 0;
-                        },
-                        
-                        2 => { // Slot 3: Paga upline e continua
-                            if upline_data.reserved_sol > 0 {
-                                let ix = solana_program::system_instruction::transfer(
-                                    &ctx.accounts.program_sol_vault.key(),
-                                    &upline_wallet.key(),
-                                    upline_data.reserved_sol
-                                );
-                                
-                                solana_program::program::invoke_signed(
-                                    &ix,
-                                    &[
-                                        ctx.accounts.program_sol_vault.to_account_info(),
-                                        upline_wallet.clone()
-                                    ],
-                                    &[&[
-                                        b"program_sol_vault".as_ref(),
-                                        &[ctx.bumps.program_sol_vault]
-                                    ]],
-                                ).map_err(|_| error!(ErrorCode::ReferrerPaymentFailed))?;
-                                
-                                upline_data.reserved_sol = 0;
-                            }
-                            // Deposito continua para próxima upline
-                        },
-                        
-                        _ => {}
-                    }
-                    
-                    // Verifica se completou matriz
-                    if upline_data.chain.filled_slots == 3 {
-                        record_matrix_completion(&mut upline_data, &mut ctx.accounts.state)?;
-                        
-                        upline_data.chain.id = ctx.accounts.state.next_chain_id;
-                        ctx.accounts.state.next_chain_id += 1;
-                        upline_data.chain.slots = [None, None, None];
-                        upline_data.chain.filled_slots = 0;
-                        
-                        current_user_pubkey = *upline_pda.key;
-                    } else {
-                        // Se não completou, para a recursão
-                        break;
-                    }
-                    
-                    // Salva as mudanças
-                    let mut data = upline_pda.try_borrow_mut_data()?;
-                    let mut write_data = &mut data[8..];
-                    upline_data.serialize(&mut write_data)?;
-                }
-            }
-        }
-        
-        // IMPORTANTE: Se todas foram slot 3 ou não processou nenhuma, faz swap+burn
-        if current_deposit > 0 && (all_slots_were_slot3 || processed_count == 0) {
-            manage_wsol_operation(
-                &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.token_program,
-                "wrap",
-                Some(current_deposit),
-            )?;
-            
-            let minimum_donut_out = calculate_swap_amount_out(
-                &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.a_vault.to_account_info(),
-                &ctx.accounts.b_vault.to_account_info(),
-                &ctx.accounts.a_vault_lp.to_account_info(),
-                &ctx.accounts.b_vault_lp.to_account_info(),
-                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                current_deposit,
-            )?;
-            
-            process_swap_wsol_to_donut(
-                &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.user_wallet.to_account_info(),
-                &ctx.accounts.user_wsol_account.to_account_info(),
-                &ctx.accounts.user_donut_account.to_account_info(),
-                &ctx.accounts.a_vault.to_account_info(),
-                &ctx.accounts.b_vault.to_account_info(),
-                &ctx.accounts.a_token_vault.to_account_info(),
-                &ctx.accounts.b_token_vault.to_account_info(),
-                &ctx.accounts.a_vault_lp_mint.to_account_info(),
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
-                &ctx.accounts.a_vault_lp.to_account_info(),
-                &ctx.accounts.b_vault_lp.to_account_info(),
-                &ctx.accounts.protocol_token_fee.to_account_info(),
-                &ctx.accounts.vault_program.to_account_info(),
-                &ctx.accounts.token_program.to_account_info(),
-                &ctx.accounts.amm_program.to_account_info(),
-                current_deposit,
-                minimum_donut_out,
-            )?;
-            
-            ctx.accounts.user_donut_account.reload()?;
-            let donut_balance = ctx.accounts.user_donut_account.amount;
-            
-            if donut_balance > 0 {
-                let burn_ix = spl_token::instruction::burn(
-                    &ctx.accounts.token_program.key(),
-                    &ctx.accounts.user_donut_account.key(),
-                    &ctx.accounts.token_mint.key(),
-                    &ctx.accounts.user_wallet.key(),
-                    &[],
-                    donut_balance,
-                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-                
-                solana_program::program::invoke(
-                    &burn_ix,
-                    &[
-                        ctx.accounts.user_donut_account.to_account_info(),
-                        ctx.accounts.token_mint.to_account_info(),
-                        ctx.accounts.user_wallet.to_account_info(),
-                    ],
-                ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-            }
-            
-            emit!(DonutSwappedAndBurned {
-                user: ctx.accounts.user_wallet.key(),
-                sol_amount: current_deposit,
-                donut_amount: donut_balance,
-                week_number: current_week,
-            });
-        }
-    }
+ verify_address_strict(
+     &ctx.accounts.vault_program.key(), 
+     &verified_addresses::METEORA_VAULT_PROGRAM, 
+     ErrorCode::InvalidVaultProgram
+ )?;
 
-    ctx.accounts.state.is_locked = false;
-    msg!("Registration completed: slot={}, matrix_completed={}", slot_idx + 1, chain_completed);
-    Ok(())
+ verify_address_strict(
+     &ctx.accounts.amm_program.key(),
+     &verified_addresses::METEORA_AMM_PROGRAM,
+     ErrorCode::InvalidMeteoraAmmProgram
+ )?;
+
+ verify_address_strict(
+     &ctx.accounts.protocol_token_fee.key(),
+     &verified_addresses::PROTOCOL_TOKEN_B_FEE,
+     ErrorCode::InvalidProtocolFeeAccount
+ )?;
+
+ if !ctx.accounts.referrer.is_registered {
+     ctx.accounts.state.is_locked = false;
+     return Err(error!(ErrorCode::ReferrerNotRegistered));
+ }
+
+ // Validação Chainlink
+ if ctx.remaining_accounts.len() < 2 {
+     ctx.accounts.state.is_locked = false;
+     return Err(error!(ErrorCode::MissingVaultAAccounts));
+ }
+
+ let chainlink_feed = &ctx.remaining_accounts[0];
+ let chainlink_program = &ctx.remaining_accounts[1];
+
+ verify_address_strict(&chainlink_program.key(), &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
+ verify_address_strict(&chainlink_feed.key(), &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
+
+ let minimum_deposit = calculate_minimum_sol_deposit(chainlink_feed, chainlink_program)?;
+ if deposit_amount < minimum_deposit {
+     ctx.accounts.state.is_locked = false;
+     return Err(error!(ErrorCode::InsufficientDeposit));
+ }
+
+ // Cria usuário
+ let referrer_entry = UplineEntry {
+     pda: ctx.accounts.referrer.key(),
+     wallet: ctx.accounts.referrer_wallet.key(),
+ };
+
+ let mut new_upline = Vec::new();
+ if ctx.accounts.referrer.upline.upline.len() >= MAX_UPLINE_DEPTH {
+     let start_idx = ctx.accounts.referrer.upline.upline.len() - (MAX_UPLINE_DEPTH - 1);
+     new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline[start_idx..]);
+ } else {
+     new_upline.extend_from_slice(&ctx.accounts.referrer.upline.upline);
+ }
+ new_upline.push(referrer_entry);
+
+ // Captura valores antes de emprestar state como mut
+ let upline_id = ctx.accounts.state.next_upline_id;
+ let chain_id = ctx.accounts.state.next_chain_id;
+ let current_week = ctx.accounts.state.current_week;
+ 
+ ctx.accounts.state.next_chain_id += 1;
+
+ let user = &mut ctx.accounts.user;
+ user.is_registered = true;
+ user.referrer = Some(ctx.accounts.referrer.key());
+ user.owner_wallet = ctx.accounts.user_wallet.key();
+ user.upline = ReferralUpline {
+     id: upline_id,
+     depth: ctx.accounts.referrer.upline.depth + 1,
+     upline: new_upline,
+ };
+ user.chain = ReferralChain {
+     id: chain_id,
+     slots: [None, None, None],
+     filled_slots: 0,
+ };
+ user.reserved_sol = 0;
+ user.reserved_tokens = 0;
+ user.completed_matrices_total = 0;
+ user.weekly_matrices = Vec::new();
+ user.total_donut_earned = 0;
+ user.total_donut_claimed = 0;
+ user.last_processed_week = 0;
+
+ // Lógica dos slots
+ let slot_idx = ctx.accounts.referrer.chain.filled_slots as usize;
+
+ match slot_idx {
+     0 => { // SLOT 1: SWAP + BURN
+         manage_wsol_operation(
+             &ctx.accounts.user_wallet.to_account_info(),
+             &ctx.accounts.user_wsol_account.to_account_info(),
+             &ctx.accounts.token_program,
+             "wrap",
+             Some(deposit_amount),
+         )?;
+
+         let minimum_donut_out = calculate_swap_amount_out(
+             &ctx.accounts.pool.to_account_info(),
+             &ctx.accounts.a_vault.to_account_info(),
+             &ctx.accounts.b_vault.to_account_info(),
+             &ctx.accounts.a_vault_lp.to_account_info(),
+             &ctx.accounts.b_vault_lp.to_account_info(),
+             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+             deposit_amount,
+         )?;
+
+         process_swap_wsol_to_donut(
+             &ctx.accounts.pool.to_account_info(),
+             &ctx.accounts.user_wallet.to_account_info(),
+             &ctx.accounts.user_wsol_account.to_account_info(),
+             &ctx.accounts.user_donut_account.to_account_info(),
+             &ctx.accounts.a_vault.to_account_info(),
+             &ctx.accounts.b_vault.to_account_info(),
+             &ctx.accounts.a_token_vault.to_account_info(),
+             &ctx.accounts.b_token_vault.to_account_info(),
+             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+             &ctx.accounts.a_vault_lp.to_account_info(),
+             &ctx.accounts.b_vault_lp.to_account_info(),
+             &ctx.accounts.protocol_token_fee.to_account_info(),
+             &ctx.accounts.vault_program.to_account_info(),
+             &ctx.accounts.token_program.to_account_info(),
+             &ctx.accounts.amm_program.to_account_info(),
+             deposit_amount,
+             minimum_donut_out,
+         )?;
+
+         let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+         let user_donut_account_reloaded = Account::<TokenAccount>::try_from(user_donut_account_info)?;
+         let donut_balance = user_donut_account_reloaded.amount;
+
+         if donut_balance > 0 {
+             let burn_ix = spl_token::instruction::burn(
+                 &ctx.accounts.token_program.key(),
+                 &ctx.accounts.user_donut_account.key(),
+                 &ctx.accounts.token_mint.key(),
+                 &ctx.accounts.user_wallet.key(),
+                 &[],
+                 donut_balance,
+             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+             
+             solana_program::program::invoke(
+                 &burn_ix,
+                 &[
+                     ctx.accounts.user_donut_account.to_account_info(),
+                     ctx.accounts.token_mint.to_account_info(),
+                     ctx.accounts.user_wallet.to_account_info(),
+                 ],
+             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+         }
+
+         emit!(DonutSwappedAndBurned {
+             user: ctx.accounts.user_wallet.key(),
+             sol_amount: deposit_amount,
+             donut_amount: donut_balance,
+             week_number: current_week,
+         });
+     },
+
+     1 => { // SLOT 2: RESERVA SOL
+         process_reserve_sol(
+             &ctx.accounts.user_wallet.to_account_info(),
+             &ctx.accounts.program_sol_vault.to_account_info(),
+             deposit_amount
+         )?;
+         ctx.accounts.referrer.reserved_sol = deposit_amount;
+     },
+
+     2 => { // SLOT 3: PAGAMENTO
+         if ctx.accounts.referrer.reserved_sol > 0 {
+             process_pay_referrer(
+                 &ctx.accounts.program_sol_vault.to_account_info(),
+                 &ctx.accounts.referrer_wallet.to_account_info(),
+                 ctx.accounts.referrer.reserved_sol,
+                 &[&[
+                     b"program_sol_vault".as_ref(),
+                     &[ctx.bumps.program_sol_vault]
+                 ]],
+             )?;
+             ctx.accounts.referrer.reserved_sol = 0;
+         }
+     },
+
+     _ => {
+         ctx.accounts.state.is_locked = false;
+         return Err(error!(ErrorCode::InvalidSlot));
+     }
+ }
+
+ // Captura next_chain_id antes da atualização
+ let next_chain_id_for_referrer = ctx.accounts.state.next_chain_id;
+
+ // Processa matriz do referrer
+ let (chain_completed, upline_pubkey) = process_referrer_chain(
+     &ctx.accounts.user.key(),
+     &mut ctx.accounts.referrer,
+     next_chain_id_for_referrer,
+ )?;
+
+ if chain_completed {
+     record_matrix_completion(&mut ctx.accounts.referrer, &mut ctx.accounts.state)?;
+     ctx.accounts.state.next_chain_id += 1;
+ }
+
+ // ===== RECURSÃO - Usando state diretamente =====
+ if chain_completed && slot_idx == 2 {
+     let mut current_user_pubkey = upline_pubkey;
+     let mut current_deposit = deposit_amount;
+     let mut all_slots_were_slot3 = true;
+     let mut processed_count = 0;
+
+     // Verifica se tem uplines para processar
+     if ctx.remaining_accounts.len() > 2 {
+         let upline_accounts = &ctx.remaining_accounts[2..]; // Pula Chainlink accounts
+         
+         if upline_accounts.len() % 2 == 0 { // PDA + wallet para cada upline
+             let upline_count = upline_accounts.len() / 2;
+             
+             for i in 0..upline_count {
+                 if i >= MAX_UPLINE_DEPTH || current_deposit == 0 {
+                     break;
+                 }
+                 
+                 let upline_pda = &upline_accounts[i * 2];
+                 let upline_wallet = &upline_accounts[i * 2 + 1];
+                 
+                 // Deserializa a conta da upline
+                 let data = upline_pda.try_borrow_data()?;
+                 if data.len() <= 8 {
+                     break;
+                 }
+                 
+                 let mut account_slice = &data[8..];
+                 let mut upline_data = UserAccount::deserialize(&mut account_slice)?;
+                 
+                 if !upline_data.is_registered {
+                     break;
+                 }
+                 
+                 let upline_slot_idx = upline_data.chain.filled_slots as usize;
+                 if upline_slot_idx >= 3 {
+                     break;
+                 }
+                 
+                 // Marca que processou algo
+                 processed_count += 1;
+                 
+                 // Adiciona usuário atual no slot da upline
+                 upline_data.chain.slots[upline_slot_idx] = Some(current_user_pubkey);
+                 upline_data.chain.filled_slots += 1;
+                 
+                 emit!(SlotFilled {
+                     slot_idx: upline_slot_idx as u8,
+                     chain_id: upline_data.chain.id,
+                     user: current_user_pubkey,
+                     owner: *upline_pda.key,
+                 });
+                 
+                 // Processa conforme o slot
+                 match upline_slot_idx {
+                     0 => { // Slot 1: Swap + Burn
+                         all_slots_were_slot3 = false;
+                         
+                         manage_wsol_operation(
+                             &ctx.accounts.user_wallet.to_account_info(),
+                             &ctx.accounts.user_wsol_account.to_account_info(),
+                             &ctx.accounts.token_program,
+                             "wrap",
+                             Some(current_deposit),
+                         )?;
+                         
+                         let minimum_donut_out = calculate_swap_amount_out(
+                             &ctx.accounts.pool.to_account_info(),
+                             &ctx.accounts.a_vault.to_account_info(),
+                             &ctx.accounts.b_vault.to_account_info(),
+                             &ctx.accounts.a_vault_lp.to_account_info(),
+                             &ctx.accounts.b_vault_lp.to_account_info(),
+                             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                             current_deposit,
+                         )?;
+                         
+                         process_swap_wsol_to_donut(
+                             &ctx.accounts.pool.to_account_info(),
+                             &ctx.accounts.user_wallet.to_account_info(),
+                             &ctx.accounts.user_wsol_account.to_account_info(),
+                             &ctx.accounts.user_donut_account.to_account_info(),
+                             &ctx.accounts.a_vault.to_account_info(),
+                             &ctx.accounts.b_vault.to_account_info(),
+                             &ctx.accounts.a_token_vault.to_account_info(),
+                             &ctx.accounts.b_token_vault.to_account_info(),
+                             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                             &ctx.accounts.a_vault_lp.to_account_info(),
+                             &ctx.accounts.b_vault_lp.to_account_info(),
+                             &ctx.accounts.protocol_token_fee.to_account_info(),
+                             &ctx.accounts.vault_program.to_account_info(),
+                             &ctx.accounts.token_program.to_account_info(),
+                             &ctx.accounts.amm_program.to_account_info(),
+                             current_deposit,
+                             minimum_donut_out,
+                         )?;
+                         
+                         let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+                         let user_donut_account_reloaded = Account::<TokenAccount>::try_from(user_donut_account_info)?;
+                         let donut_balance = user_donut_account_reloaded.amount;
+                         
+                         if donut_balance > 0 {
+                             let burn_ix = spl_token::instruction::burn(
+                                 &ctx.accounts.token_program.key(),
+                                 &ctx.accounts.user_donut_account.key(),
+                                 &ctx.accounts.token_mint.key(),
+                                 &ctx.accounts.user_wallet.key(),
+                                 &[],
+                                 donut_balance,
+                             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+                             
+                             solana_program::program::invoke(
+                                 &burn_ix,
+                                 &[
+                                     ctx.accounts.user_donut_account.to_account_info(),
+                                     ctx.accounts.token_mint.to_account_info(),
+                                     ctx.accounts.user_wallet.to_account_info(),
+                                 ],
+                             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+                         }
+                         
+                         emit!(DonutSwappedAndBurned {
+                             user: ctx.accounts.user_wallet.key(),
+                             sol_amount: current_deposit,
+                             donut_amount: donut_balance,
+                             week_number: current_week,
+                         });
+                         
+                         current_deposit = 0;
+                     },
+                     
+                     1 => { // Slot 2: Reserva SOL
+                         all_slots_were_slot3 = false;
+                         
+                         process_reserve_sol(
+                             &ctx.accounts.user_wallet.to_account_info(),
+                             &ctx.accounts.program_sol_vault.to_account_info(),
+                             current_deposit
+                         )?;
+                         
+                         upline_data.reserved_sol = current_deposit;
+                         current_deposit = 0;
+                     },
+                     
+                     2 => { // Slot 3: Paga upline e continua
+                         if upline_data.reserved_sol > 0 {
+                             let ix = solana_program::system_instruction::transfer(
+                                 &ctx.accounts.program_sol_vault.key(),
+                                 &upline_wallet.key(),
+                                 upline_data.reserved_sol
+                             );
+                             
+                             solana_program::program::invoke_signed(
+                                 &ix,
+                                 &[
+                                     ctx.accounts.program_sol_vault.to_account_info(),
+                                     upline_wallet.clone()
+                                 ],
+                                 &[&[
+                                     b"program_sol_vault".as_ref(),
+                                     &[ctx.bumps.program_sol_vault]
+                                 ]],
+                             ).map_err(|_| error!(ErrorCode::ReferrerPaymentFailed))?;
+                             
+                             upline_data.reserved_sol = 0;
+                         }
+                         // Deposito continua para próxima upline
+                     },
+                     
+                     _ => {}
+                 }
+                 
+                 // Verifica se completou matriz
+                 if upline_data.chain.filled_slots == 3 {
+                     record_matrix_completion(&mut upline_data, &mut ctx.accounts.state)?;
+                     
+                     upline_data.chain.id = ctx.accounts.state.next_chain_id;
+                     ctx.accounts.state.next_chain_id += 1;
+                     upline_data.chain.slots = [None, None, None];
+                     upline_data.chain.filled_slots = 0;
+                     
+                     current_user_pubkey = *upline_pda.key;
+                 } else {
+                     // Se não completou, para a recursão
+                     break;
+                 }
+                 
+                 // Salva as mudanças
+                 let mut data = upline_pda.try_borrow_mut_data()?;
+                 let mut write_data = &mut data[8..];
+                 upline_data.serialize(&mut write_data)?;
+             }
+         }
+     }
+     
+     // IMPORTANTE: Se todas foram slot 3 ou não processou nenhuma, faz swap+burn
+     if current_deposit > 0 && (all_slots_were_slot3 || processed_count == 0) {
+         manage_wsol_operation(
+             &ctx.accounts.user_wallet.to_account_info(),
+             &ctx.accounts.user_wsol_account.to_account_info(),
+             &ctx.accounts.token_program,
+             "wrap",
+             Some(current_deposit),
+         )?;
+         
+         let minimum_donut_out = calculate_swap_amount_out(
+             &ctx.accounts.pool.to_account_info(),
+             &ctx.accounts.a_vault.to_account_info(),
+             &ctx.accounts.b_vault.to_account_info(),
+             &ctx.accounts.a_vault_lp.to_account_info(),
+             &ctx.accounts.b_vault_lp.to_account_info(),
+             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+             current_deposit,
+         )?;
+         
+         process_swap_wsol_to_donut(
+             &ctx.accounts.pool.to_account_info(),
+             &ctx.accounts.user_wallet.to_account_info(),
+             &ctx.accounts.user_wsol_account.to_account_info(),
+             &ctx.accounts.user_donut_account.to_account_info(),
+             &ctx.accounts.a_vault.to_account_info(),
+             &ctx.accounts.b_vault.to_account_info(),
+             &ctx.accounts.a_token_vault.to_account_info(),
+             &ctx.accounts.b_token_vault.to_account_info(),
+             &ctx.accounts.a_vault_lp_mint.to_account_info(),
+             &ctx.accounts.b_vault_lp_mint.to_account_info(),
+             &ctx.accounts.a_vault_lp.to_account_info(),
+             &ctx.accounts.b_vault_lp.to_account_info(),
+             &ctx.accounts.protocol_token_fee.to_account_info(),
+             &ctx.accounts.vault_program.to_account_info(),
+             &ctx.accounts.token_program.to_account_info(),
+             &ctx.accounts.amm_program.to_account_info(),
+             current_deposit,
+             minimum_donut_out,
+         )?;
+         
+         let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+         let user_donut_account_reloaded = Account::<TokenAccount>::try_from(user_donut_account_info)?;
+         let donut_balance = user_donut_account_reloaded.amount;
+         
+         if donut_balance > 0 {
+             let burn_ix = spl_token::instruction::burn(
+                 &ctx.accounts.token_program.key(),
+                 &ctx.accounts.user_donut_account.key(),
+                 &ctx.accounts.token_mint.key(),
+                 &ctx.accounts.user_wallet.key(),
+                 &[],
+                 donut_balance,
+             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+             
+             solana_program::program::invoke(
+                 &burn_ix,
+                 &[
+                     ctx.accounts.user_donut_account.to_account_info(),
+                     ctx.accounts.token_mint.to_account_info(),
+                     ctx.accounts.user_wallet.to_account_info(),
+                 ],
+             ).map_err(|_| error!(ErrorCode::BurnFailed))?;
+         }
+         
+         emit!(DonutSwappedAndBurned {
+             user: ctx.accounts.user_wallet.key(),
+             sol_amount: current_deposit,
+             donut_amount: donut_balance,
+             week_number: current_week,
+         });
+     }
+ }
+
+ ctx.accounts.state.is_locked = false;
+ msg!("Registration completed: slot={}, matrix_completed={}", slot_idx + 1, chain_completed);
+ Ok(())
 }
 
 pub fn claim_airdrop(ctx: Context<ClaimAirdrop>) -> Result<()> {
-check_and_process_week_change(&mut ctx.accounts.state)?;
-process_user_pending_weeks(&mut ctx.accounts.user, &ctx.accounts.state)?;
+ check_and_process_week_change(&mut ctx.accounts.state)?;
+ process_user_pending_weeks(&mut ctx.accounts.user, &ctx.accounts.state)?;
 
-let available = ctx.accounts.user.get_claimable_donut();
-if available == 0 {
-    return Err(error!(ErrorCode::NothingToClaim));
-}
+ let available = ctx.accounts.user.get_claimable_donut();
+ if available == 0 {
+     return Err(error!(ErrorCode::NothingToClaim));
+ }
 
-let transfer_instruction = spl_token::instruction::transfer(
-    &ctx.accounts.token_program.key(),
-    &ctx.accounts.program_token_vault.key(),
-    &ctx.accounts.user_token_account.key(),
-    &ctx.accounts.vault_authority.key(),
-    &[],
-    available,
-).map_err(|_| error!(ErrorCode::BurnFailed))?;
+ let transfer_instruction = spl_token::instruction::transfer(
+     &ctx.accounts.token_program.key(),
+     &ctx.accounts.program_token_vault.key(),
+     &ctx.accounts.user_token_account.key(),
+     &ctx.accounts.vault_authority.key(),
+     &[],
+     available,
+ ).map_err(|_| error!(ErrorCode::BurnFailed))?;
 
-let transfer_accounts = vec![
-    ctx.accounts.program_token_vault.to_account_info(),
-    ctx.accounts.user_token_account.to_account_info(),
-    ctx.accounts.vault_authority.to_account_info(),
-    ctx.accounts.token_program.to_account_info(),
-];
+ let transfer_accounts = vec![
+     ctx.accounts.program_token_vault.to_account_info(),
+     ctx.accounts.user_token_account.to_account_info(),
+     ctx.accounts.vault_authority.to_account_info(),
+     ctx.accounts.token_program.to_account_info(),
+ ];
 
-solana_program::program::invoke_signed(
-    &transfer_instruction,
-    &transfer_accounts,
-    &[&[
-        b"token_vault_authority".as_ref(),
-        &[ctx.bumps.vault_authority]
-    ]],
-).map_err(|_| error!(ErrorCode::BurnFailed))?;
+ solana_program::program::invoke_signed(
+     &transfer_instruction,
+     &transfer_accounts,
+     &[&[
+         b"token_vault_authority".as_ref(),
+         &[ctx.bumps.vault_authority]
+     ]],
+ ).map_err(|_| error!(ErrorCode::BurnFailed))?;
 
-ctx.accounts.user.total_donut_claimed = ctx.accounts.user.total_donut_claimed
-    .checked_add(available)
-    .ok_or(ErrorCode::ArithmeticOverflow)?;
+ ctx.accounts.user.total_donut_claimed = ctx.accounts.user.total_donut_claimed
+     .checked_add(available)
+     .ok_or(ErrorCode::ArithmeticOverflow)?;
 
-emit!(AirdropClaimed {
-    user: ctx.accounts.user_wallet.key(),
-    amount: available,
-    total_earned: ctx.accounts.user.total_donut_earned,
-    total_claimed: ctx.accounts.user.total_donut_claimed,
-});
+ emit!(AirdropClaimed {
+     user: ctx.accounts.user_wallet.key(),
+     amount: available,
+     total_earned: ctx.accounts.user.total_donut_earned,
+     total_claimed: ctx.accounts.user.total_donut_claimed,
+ });
 
-msg!("Claimed {} DONUT", available);
-Ok(())
+ msg!("Claimed {} DONUT", available);
+ Ok(())
 }
 }

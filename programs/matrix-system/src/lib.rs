@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
@@ -60,7 +60,7 @@ pub mod admin_addresses {
     use solana_program::pubkey::Pubkey;
 
     pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("5C16cVYXe7KRPz6rBD33qhcqyjvy42LP8tyJRNMXbKiL");
-    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
+    pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("5C16cVYXe7KRPz6rBD33qhcqyjvy42LP8tyJRNMXbKiL");
 }
 
 // ===== PROGRAM STRUCTURES =====
@@ -1158,7 +1158,6 @@ pub mod referral_system {
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_token_account.to_account_info(),
                 &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.pool_authority.to_account_info(),
                 &ctx.accounts.pool_token_a_vault.to_account_info(),
                 &ctx.accounts.pool_token_b_vault.to_account_info(),
                 &ctx.accounts.pool_token_a_fees.to_account_info(),
@@ -1291,7 +1290,6 @@ pub mod referral_system {
                     &ctx.accounts.user_wsol_account.to_account_info(),
                     &ctx.accounts.user_token_account.to_account_info(),
                     &ctx.accounts.pool.to_account_info(),
-                    &ctx.accounts.pool_authority.to_account_info(),
                     &ctx.accounts.pool_token_a_vault.to_account_info(),
                     &ctx.accounts.pool_token_b_vault.to_account_info(),
                     &ctx.accounts.pool_token_a_fees.to_account_info(),
@@ -1413,7 +1411,6 @@ pub mod referral_system {
                                 &ctx.accounts.user_wsol_account.to_account_info(),
                                 &ctx.accounts.user_token_account.to_account_info(),
                                 &ctx.accounts.pool.to_account_info(),
-                                &ctx.accounts.pool_authority.to_account_info(),
                                 &ctx.accounts.pool_token_a_vault.to_account_info(),
                                 &ctx.accounts.pool_token_b_vault.to_account_info(),
                                 &ctx.accounts.pool_token_a_fees.to_account_info(),
@@ -1550,7 +1547,6 @@ pub mod referral_system {
                         &ctx.accounts.user_wsol_account.to_account_info(),
                         &ctx.accounts.user_token_account.to_account_info(),
                         &ctx.accounts.pool.to_account_info(),
-                        &ctx.accounts.pool_authority.to_account_info(),
                         &ctx.accounts.pool_token_a_vault.to_account_info(),
                         &ctx.accounts.pool_token_b_vault.to_account_info(),
                         &ctx.accounts.pool_token_a_fees.to_account_info(),
@@ -1586,7 +1582,6 @@ pub mod referral_system {
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_token_account.to_account_info(),
                 &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.pool_authority.to_account_info(),
                 &ctx.accounts.pool_token_a_vault.to_account_info(),
                 &ctx.accounts.pool_token_b_vault.to_account_info(),
                 &ctx.accounts.pool_token_a_fees.to_account_info(),

@@ -8,7 +8,7 @@ use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("4rB7DjRhDzGzeTmvWZFpe8h4yktL9xJTsrunGtErrjv3");
+declare_id!("G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -1633,7 +1633,10 @@ pub mod referral_system {
     }
     
     // Register without referrer
-    pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerDeposit>, deposit_amount: u64) -> Result<()> {
+    pub fn register_without_referrer<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, RegisterWithoutReferrerDeposit<'info>>, 
+        deposit_amount: u64
+    ) -> Result<()> {
         // PROTEÇÃO REENTRANCY
         if ctx.accounts.state.is_locked {
             return Err(error!(ErrorCode::ReentrancyLock));
@@ -1746,6 +1749,13 @@ pub mod referral_system {
             return Err(error!(ErrorCode::MissingVaultAAccounts));
         }
         
+        // Create local references to avoid lifetime issues
+        let pool_info = ctx.accounts.pool.to_account_info();
+        let b_vault_info = ctx.accounts.b_vault.to_account_info();
+        let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+        let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+        let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+        
         let a_vault = &ctx.remaining_accounts[0];
         let a_vault_lp = &ctx.remaining_accounts[1];
         let a_vault_lp_mint = &ctx.remaining_accounts[2];
@@ -1753,13 +1763,13 @@ pub mod referral_system {
         
         // Calculate minimum DONUT expected
         let minimum_donut_out = match calculate_swap_amount_out(
-            &ctx.accounts.pool.to_account_info(),
+            &pool_info,
             a_vault,
-            &ctx.accounts.b_vault.to_account_info(),
+            &b_vault_info,
             a_vault_lp,
-            &ctx.accounts.b_vault_lp.to_account_info(),
+            &b_vault_lp_info,
             a_vault_lp_mint,
-            &ctx.accounts.b_vault_lp_mint.to_account_info(),
+            &b_vault_lp_mint_info,
             deposit_amount,
         ) {
             Ok(amount) => amount,
@@ -1771,18 +1781,18 @@ pub mod referral_system {
 
         // Execute swap
         if let Err(e) = process_swap_wsol_to_donut(
-            &ctx.accounts.pool.to_account_info(),
+            &pool_info,
             &ctx.accounts.user_wallet.to_account_info(),
             &ctx.accounts.user_source_token.to_account_info(),
             &ctx.accounts.user_donut_account.to_account_info(),
             a_vault,
-            &ctx.accounts.b_vault.to_account_info(),
+            &b_vault_info,
             a_token_vault,
-            &ctx.accounts.b_token_vault.to_account_info(),
+            &b_token_vault_info,
             a_vault_lp_mint,
-            &ctx.accounts.b_vault_lp_mint.to_account_info(),
+            &b_vault_lp_mint_info,
             a_vault_lp,
-            &ctx.accounts.b_vault_lp.to_account_info(),
+            &b_vault_lp_info,
             &ctx.accounts.protocol_token_fee.to_account_info(),
             &ctx.accounts.vault_program.to_account_info(),
             &ctx.accounts.token_program.to_account_info(),
@@ -2068,14 +2078,21 @@ pub mod referral_system {
 
         if slot_idx == 0 {
             // SLOT 1: Swap WSOL for DONUT
+            // Create local references to avoid lifetime issues
+            let pool_info = pool.clone();
+            let b_vault_info = ctx.accounts.b_vault.to_account_info();
+            let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+            let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+            let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+            
             let minimum_donut_out = match calculate_swap_amount_out(
-                pool,
+                &pool_info,
                 a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
+                &b_vault_info,
                 a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
+                &b_vault_lp_info,
                 a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &b_vault_lp_mint_info,
                 deposit_amount,
             ) {
                 Ok(amount) => amount,
@@ -2086,18 +2103,18 @@ pub mod referral_system {
             };
             
             if let Err(e) = process_swap_wsol_to_donut(
-                pool,
+                &pool_info,
                 &ctx.accounts.user_wallet.to_account_info(),
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_donut_account.to_account_info(),
                 a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
+                &b_vault_info,
                 a_token_vault,
-                &ctx.accounts.b_token_vault.to_account_info(),
+                &b_token_vault_info,
                 a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &b_vault_lp_mint_info,
                 a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
+                &b_vault_lp_info,
                 &ctx.accounts.protocol_token_fee.to_account_info(),
                 &ctx.accounts.vault_program.to_account_info(),
                 &ctx.accounts.token_program.to_account_info(),
@@ -2299,15 +2316,22 @@ pub mod referral_system {
                     return Err(e);
                 }
                 
+                // Create local references
+                let pool_info = pool.clone();
+                let b_vault_info = ctx.accounts.b_vault.to_account_info();
+                let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+                let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+                let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+                
                 // Calculate minimum
                 let minimum_donut_out = match calculate_swap_amount_out(
-                    pool,
+                    &pool_info,
                     a_vault,
-                    &ctx.accounts.b_vault.to_account_info(),
+                    &b_vault_info,
                     a_vault_lp,
-                    &ctx.accounts.b_vault_lp.to_account_info(),
+                    &b_vault_lp_info,
                     a_vault_lp_mint,
-                    &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                    &b_vault_lp_mint_info,
                     current_deposit,
                 ) {
                     Ok(amount) => amount,
@@ -2319,18 +2343,18 @@ pub mod referral_system {
                 
                 // Execute swap
                 if let Err(e) = process_swap_wsol_to_donut(
-                    pool,
+                    &pool_info,
                     &ctx.accounts.user_wallet.to_account_info(),
                     &ctx.accounts.user_wsol_account.to_account_info(),
                     &ctx.accounts.user_donut_account.to_account_info(),
                     a_vault,
-                    &ctx.accounts.b_vault.to_account_info(),
+                    &b_vault_info,
                     a_token_vault,
-                    &ctx.accounts.b_token_vault.to_account_info(),
+                    &b_token_vault_info,
                     a_vault_lp_mint,
-                    &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                    &b_vault_lp_mint_info,
                     a_vault_lp,
-                    &ctx.accounts.b_vault_lp.to_account_info(),
+                    &b_vault_lp_info,
                     &ctx.accounts.protocol_token_fee.to_account_info(),
                     &ctx.accounts.vault_program.to_account_info(),
                     &ctx.accounts.token_program.to_account_info(),
@@ -2463,15 +2487,22 @@ pub mod referral_system {
                                 return Err(e);
                             }
                             
+                            // Create local references
+                            let pool_info = pool.clone();
+                            let b_vault_info = ctx.accounts.b_vault.to_account_info();
+                            let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+                            let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+                            let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+                            
                             // Calculate minimum
                             let minimum_donut_out = match calculate_swap_amount_out(
-                                pool,
+                                &pool_info,
                                 a_vault,
-                                &ctx.accounts.b_vault.to_account_info(),
+                                &b_vault_info,
                                 a_vault_lp,
-                                &ctx.accounts.b_vault_lp.to_account_info(),
+                                &b_vault_lp_info,
                                 a_vault_lp_mint,
-                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                                &b_vault_lp_mint_info,
                                 current_deposit,
                             ) {
                                 Ok(amount) => amount,
@@ -2483,18 +2514,18 @@ pub mod referral_system {
                             
                             // Execute swap
                             if let Err(e) = process_swap_wsol_to_donut(
-                                pool,
+                                &pool_info,
                                 &ctx.accounts.user_wallet.to_account_info(),
                                 &ctx.accounts.user_wsol_account.to_account_info(),
                                 &ctx.accounts.user_donut_account.to_account_info(),
                                 a_vault,
-                                &ctx.accounts.b_vault.to_account_info(),
+                                &b_vault_info,
                                 a_token_vault,
-                                &ctx.accounts.b_token_vault.to_account_info(),
+                                &b_token_vault_info,
                                 a_vault_lp_mint,
-                                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                                &b_vault_lp_mint_info,
                                 a_vault_lp,
-                                &ctx.accounts.b_vault_lp.to_account_info(),
+                                &b_vault_lp_info,
                                 &ctx.accounts.protocol_token_fee.to_account_info(),
                                 &ctx.accounts.vault_program.to_account_info(),
                                 &ctx.accounts.token_program.to_account_info(),
@@ -2697,15 +2728,22 @@ pub mod referral_system {
                         return Err(e);
                     }
                     
+                    // Create local references
+                    let pool_info = pool.clone();
+                    let b_vault_info = ctx.accounts.b_vault.to_account_info();
+                    let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+                    let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+                    let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+                    
                     // Calculate minimum
                     let minimum_donut_out = match calculate_swap_amount_out(
-                        pool,
+                        &pool_info,
                         a_vault,
-                        &ctx.accounts.b_vault.to_account_info(),
+                        &b_vault_info,
                         a_vault_lp,
-                        &ctx.accounts.b_vault_lp.to_account_info(),
+                        &b_vault_lp_info,
                         a_vault_lp_mint,
-                        &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                        &b_vault_lp_mint_info,
                         current_deposit,
                     ) {
                         Ok(amount) => amount,
@@ -2717,18 +2755,18 @@ pub mod referral_system {
                     
                     // Execute swap
                     if let Err(e) = process_swap_wsol_to_donut(
-                        pool,
+                        &pool_info,
                         &ctx.accounts.user_wallet.to_account_info(),
                         &ctx.accounts.user_wsol_account.to_account_info(),
                         &ctx.accounts.user_donut_account.to_account_info(),
                         a_vault,
-                        &ctx.accounts.b_vault.to_account_info(),
+                        &b_vault_info,
                         a_token_vault,
-                        &ctx.accounts.b_token_vault.to_account_info(),
+                        &b_token_vault_info,
                         a_vault_lp_mint,
-                        &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                        &b_vault_lp_mint_info,
                         a_vault_lp,
-                        &ctx.accounts.b_vault_lp.to_account_info(),
+                        &b_vault_lp_info,
                         &ctx.accounts.protocol_token_fee.to_account_info(),
                         &ctx.accounts.vault_program.to_account_info(),
                         &ctx.accounts.token_program.to_account_info(),
@@ -2758,15 +2796,22 @@ pub mod referral_system {
         if final_wsol_balance > 0 {
             msg!("EMERGENCY: Found remaining WSOL balance: {}, forcing swap", final_wsol_balance);
             
+            // Create local references
+            let pool_info = pool.clone();
+            let b_vault_info = ctx.accounts.b_vault.to_account_info();
+            let b_vault_lp_info = ctx.accounts.b_vault_lp.to_account_info();
+            let b_vault_lp_mint_info = ctx.accounts.b_vault_lp_mint.to_account_info();
+            let b_token_vault_info = ctx.accounts.b_token_vault.to_account_info();
+            
             // Calculate minimum
             let minimum_donut_out = match calculate_swap_amount_out(
-                pool,
+                &pool_info,
                 a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
+                &b_vault_info,
                 a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
+                &b_vault_lp_info,
                 a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &b_vault_lp_mint_info,
                 final_wsol_balance,
             ) {
                 Ok(amount) => amount,
@@ -2778,18 +2823,18 @@ pub mod referral_system {
             
             // Execute emergency swap
             if let Err(e) = process_swap_wsol_to_donut(
-                pool,
+                &pool_info,
                 &ctx.accounts.user_wallet.to_account_info(),
                 &ctx.accounts.user_wsol_account.to_account_info(),
                 &ctx.accounts.user_donut_account.to_account_info(),
                 a_vault,
-                &ctx.accounts.b_vault.to_account_info(),
+                &b_vault_info,
                 a_token_vault,
-                &ctx.accounts.b_token_vault.to_account_info(),
+                &b_token_vault_info,
                 a_vault_lp_mint,
-                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &b_vault_lp_mint_info,
                 a_vault_lp,
-                &ctx.accounts.b_vault_lp.to_account_info(),
+                &b_vault_lp_info,
                 &ctx.accounts.protocol_token_fee.to_account_info(),
                 &ctx.accounts.vault_program.to_account_info(),
                 &ctx.accounts.token_program.to_account_info(),

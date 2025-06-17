@@ -538,6 +538,7 @@ pub struct RegisterWithoutReferrer<'info> {
     pub token_mint: UncheckedAccount<'info>,
     
     /// CHECK: Protocol fee account for Meteora
+    #[account(mut)]
     pub protocol_token_fee: UncheckedAccount<'info>,
     
     /// CHECK: Meteora Dynamic AMM program

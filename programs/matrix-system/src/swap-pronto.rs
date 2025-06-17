@@ -93,9 +93,6 @@ pub enum ErrorCode {
     
     #[msg("Missing vault A accounts")]
     MissingVaultAAccounts,
-    
-    #[msg("Failed to burn tokens")]
-    BurnFailed,
 }
 
 // ===== PROGRAM STRUCTURES =====
@@ -684,39 +681,7 @@ pub mod matrix_system {
             minimum_donut_out,
         )?;
 
-        // Get DONUT balance after swap
-        let donut_balance = ctx.accounts.user_donut_account.amount;
-        msg!("DONUT balance after swap: {}", donut_balance);
-
-        // Burn 100% of DONUT tokens received
-        if donut_balance > 0 {
-            msg!("Burning {} DONUT tokens...", donut_balance);
-            
-            let burn_ix = spl_token::instruction::burn(
-                &ctx.accounts.token_program.key(),
-                &ctx.accounts.user_donut_account.key(),
-                &ctx.accounts.token_mint.key(),
-                &ctx.accounts.user_wallet.key(),
-                &[],
-                donut_balance,
-            ).map_err(|_| error!(ErrorCode::BurnFailed))?;
-            
-            solana_program::program::invoke(
-                &burn_ix,
-                &[
-                    ctx.accounts.user_donut_account.to_account_info(),
-                    ctx.accounts.token_mint.to_account_info(),
-                    ctx.accounts.user_wallet.to_account_info(),
-                ],
-            ).map_err(|e| {
-                msg!("Burn failed: {:?}", e);
-                error!(ErrorCode::BurnFailed)
-            })?;
-            
-            msg!("✅ Successfully burned {} DONUT tokens", donut_balance);
-        }
-
-        msg!("User registered: swapped {} WSOL for DONUT and burned all tokens", deposit_amount);
+        msg!("User registered: swapped {} WSOL for DONUT", deposit_amount);
         
         Ok(())
     }

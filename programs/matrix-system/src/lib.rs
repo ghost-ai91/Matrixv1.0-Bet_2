@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 
@@ -126,7 +126,11 @@ pub struct ProgramState {
 }
 
 impl ProgramState {
-    pub const SIZE: usize = 1400;
+    // TAMANHO CORRETO CALCULADO:
+    // 32 (owner) + 32 (treasury) + 1 (locked) + 4 (upline_id) + 4 (chain_id) 
+    // + 1 (week) + 8 (matrices) + 8 (timestamp) + 1 (active) 
+    // + 4 (vec length) + (36 * 33) (snapshots) + padding
+    pub const SIZE: usize = 32 + 32 + 1 + 4 + 4 + 1 + 8 + 8 + 1 + 4 + (36 * 33) + 200;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug)]
@@ -961,10 +965,13 @@ pub struct ClaimAirdrop<'info> {
 pub struct RegisterWithoutReferrerDeposit<'info> {
     #[account(mut)]
     pub state: Box<Account<'info, ProgramState>>,
+    
     #[account(mut)]
     pub owner: Signer<'info>,
+    
     #[account(mut)]
     pub user_wallet: Signer<'info>,
+    
     #[account(
         init,
         payer = user_wallet,
@@ -977,63 +984,71 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
     /// User's WSOL account
     #[account(
         mut,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = user_wallet
+        token::mint = wsol_mint,
+        token::authority = user_wallet
     )]
     pub user_wsol_account: Box<Account<'info, TokenAccount>>,
     
-    /// Account to receive DONUT tokens
+    /// Account to receive DONUT tokens  
     #[account(
         init_if_needed,
         payer = user_wallet,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_wallet
+        token::mint = token_mint,
+        token::authority = user_wallet
     )]
     pub user_donut_account: Box<Account<'info, TokenAccount>>,
     
     /// WSOL mint
-    /// CHECK: This is the fixed WSOL mint address
-    pub wsol_mint: AccountInfo<'info>,
+    pub wsol_mint: Account<'info, Mint>,
     
-    // METEORA ACCOUNTS
+    // METEORA ACCOUNTS - Using UncheckedAccount to save stack space
     #[account(mut)]
-    /// CHECK: Pool account
+    /// CHECK: Pool account - validated in instruction
     pub pool: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Vault A
+    /// CHECK: Vault A - validated in instruction
     pub a_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Vault B (SOL)
+    /// CHECK: Vault B - validated in instruction
     pub b_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Token vault A
+    /// CHECK: Token vault A - validated in instruction
     pub a_token_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Token vault B
+    /// CHECK: Token vault B - validated in instruction
     pub b_token_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP mint A
+    /// CHECK: LP mint A - validated in instruction
     pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP mint B
+    /// CHECK: LP mint B - validated in instruction
     pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP token A
+    /// CHECK: LP token A - validated in instruction
     pub a_vault_lp: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP token B
+    /// CHECK: LP token B - validated in instruction
     pub b_vault_lp: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Protocol fee account
+    /// CHECK: Protocol fee account - validated in instruction
     pub protocol_token_fee: UncheckedAccount<'info>,
     
-    #[account(mut)]
-    /// CHECK: Token mint
-    pub token_mint: AccountInfo<'info>,
-    /// CHECK: Vault program
-    pub vault_program: AccountInfo<'info>,
-    /// CHECK: AMM program
-    pub amm_program: AccountInfo<'info>,
+    pub token_mint: Account<'info, Mint>,
+    
+    /// CHECK: Vault program - validated in instruction
+    pub vault_program: UncheckedAccount<'info>,
+    
+    /// CHECK: AMM program - validated in instruction
+    pub amm_program: UncheckedAccount<'info>,
     
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -1046,12 +1061,17 @@ pub struct RegisterWithoutReferrerDeposit<'info> {
 pub struct RegisterWithSolDeposit<'info> {
     #[account(mut)]
     pub state: Box<Account<'info, ProgramState>>,
+    
     #[account(mut)]
     pub user_wallet: Signer<'info>,
+    
     #[account(mut)]
     pub referrer: Box<Account<'info, UserAccount>>,
+    
     #[account(mut)]
-    pub referrer_wallet: SystemAccount<'info>,
+    /// CHECK: Referrer wallet - validated in instruction
+    pub referrer_wallet: UncheckedAccount<'info>,
+    
     #[account(
         init,
         payer = user_wallet,
@@ -1062,56 +1082,58 @@ pub struct RegisterWithSolDeposit<'info> {
     pub user: Box<Account<'info, UserAccount>>,
     
     /// User's WSOL account
-    #[account(
-        mut,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_wsol_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    /// CHECK: WSOL token account - validated in instruction
+    pub user_wsol_account: UncheckedAccount<'info>,
     
     /// Account to receive DONUT tokens
-    #[account(
-        init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = token_mint,
-        associated_token::authority = user_wallet
-    )]
-    pub user_donut_account: Box<Account<'info, TokenAccount>>,
+    #[account(mut)]
+    /// CHECK: DONUT token account - validated in instruction
+    pub user_donut_account: UncheckedAccount<'info>,
     
     /// WSOL mint
-    /// CHECK: This is the fixed WSOL mint address
-    pub wsol_mint: AccountInfo<'info>,
+    /// CHECK: WSOL mint - validated in instruction
+    pub wsol_mint: UncheckedAccount<'info>,
     
-    // METEORA ACCOUNTS
+    // METEORA ACCOUNTS - All as UncheckedAccount
     #[account(mut)]
-    /// CHECK: Pool account
+    /// CHECK: Pool account - validated in instruction
     pub pool: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Vault A
+    /// CHECK: Vault A - validated in instruction
     pub a_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Vault B (SOL)
+    /// CHECK: Vault B - validated in instruction
     pub b_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Token vault A
+    /// CHECK: Token vault A - validated in instruction
     pub a_token_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Token vault B
+    /// CHECK: Token vault B - validated in instruction
     pub b_token_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP mint A
+    /// CHECK: LP mint A - validated in instruction
     pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP mint B
+    /// CHECK: LP mint B - validated in instruction
     pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP token A
+    /// CHECK: LP token A - validated in instruction
     pub a_vault_lp: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: LP token B
+    /// CHECK: LP token B - validated in instruction
     pub b_vault_lp: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Protocol fee account
+    /// CHECK: Protocol fee account - validated in instruction
     pub protocol_token_fee: UncheckedAccount<'info>,
     
     #[account(
@@ -1119,22 +1141,28 @@ pub struct RegisterWithSolDeposit<'info> {
         seeds = [b"program_sol_vault"],
         bump
     )]
-    pub program_sol_vault: SystemAccount<'info>,
+    /// CHECK: Program SOL vault PDA
+    pub program_sol_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Token mint - validated in instruction
+    pub token_mint: UncheckedAccount<'info>,
+    
     #[account(mut)]
-    /// CHECK: Token mint
-    pub token_mint: AccountInfo<'info>,
-    #[account(mut)]
-    /// CHECK: Referrer's token account
-    pub referrer_token_account: AccountInfo<'info>,
-    /// CHECK: Vault program
-    pub vault_program: AccountInfo<'info>,
-    /// CHECK: AMM program
-    pub amm_program: AccountInfo<'info>,
+    /// CHECK: Referrer's token account - validated in instruction
+    pub referrer_token_account: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault program - validated in instruction
+    pub vault_program: UncheckedAccount<'info>,
+    
+    /// CHECK: AMM program - validated in instruction
+    pub amm_program: UncheckedAccount<'info>,
     
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub rent: Sysvar<'info, Rent>,
+    
+    /// CHECK: Rent sysvar
+    pub rent: UncheckedAccount<'info>,
 }
 
 // ===== PROGRAMA PRINCIPAL =====
@@ -1360,6 +1388,41 @@ pub mod referral_system {
             return Err(error!(ErrorCode::ReentrancyLock));
         }
         ctx.accounts.state.is_locked = true;
+
+           // ===== VALIDAÇÕES DE CONTAS =====
+    // Validar que referrer_wallet é uma conta do sistema
+    let referrer_wallet_info = &ctx.accounts.referrer_wallet.to_account_info();
+    if referrer_wallet_info.owner != &solana_program::system_program::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::PaymentWalletInvalid));
+    }
+
+    // Validar que program_sol_vault é uma conta do sistema
+    let program_sol_vault_info = &ctx.accounts.program_sol_vault.to_account_info();
+    if program_sol_vault_info.owner != &solana_program::system_program::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::InvalidVaultAddress));
+    }
+
+    // Validar que as contas token pertencem ao SPL Token Program
+    let user_wsol_account_info = &ctx.accounts.user_wsol_account.to_account_info();
+    if user_wsol_account_info.owner != &spl_token::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::InvalidTokenAccount));
+    }
+
+    let user_donut_account_info = &ctx.accounts.user_donut_account.to_account_info();
+    if user_donut_account_info.owner != &spl_token::ID {
+        ctx.accounts.state.is_locked = false;
+        return Err(error!(ErrorCode::InvalidTokenAccount));
+    }
+
+    // Validar WSOL mint
+    verify_address_strict(&ctx.accounts.wsol_mint.key(), &verified_addresses::WSOL_MINT, ErrorCode::InvalidTokenMintAddress)?;
+    
+    // Validar token mint
+    verify_address_strict(&ctx.accounts.token_mint.key(), &verified_addresses::TOKEN_MINT, ErrorCode::InvalidTokenMintAddress)?;
+    // ===== FIM DAS VALIDAÇÕES =====
 
         check_and_process_week_change(&mut ctx.accounts.state)?;
         process_user_pending_weeks(&mut ctx.accounts.referrer, &ctx.accounts.state)?;
@@ -1866,6 +1929,13 @@ pub mod referral_system {
         if available == 0 {
             return Err(error!(ErrorCode::NothingToClaim));
         }
+
+        // Verificar se o program_token_vault é o endereço correto
+        verify_address_strict(
+            &ctx.accounts.program_token_vault.key(),
+            &verified_addresses::PROGRAM_TOKEN_VAULT,
+            ErrorCode::InvalidProgramTokenVault
+        )?;
 
         let transfer_instruction = spl_token::instruction::transfer(
             &ctx.accounts.token_program.key(),

@@ -21,7 +21,7 @@ const idl = require("./target/idl/referral_system.json")
 
 // Configurações principais - UPDATED for simplified contract
 const PROGRAM_ID = new PublicKey(
-  "DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy"
+  "G6dU3Ghhg7YGkSttucjvRzErkMAgPhFHx3efZ65Embin"
 )
 const TOKEN_MINT = new PublicKey(
   "CCTG4ZmGa9Nk9NVxbd1FXBNyKjyHSapuF9aU6zgcA3xz"

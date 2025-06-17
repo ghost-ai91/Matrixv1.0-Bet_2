@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{self, Token, TokenAccount, Mint};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
@@ -54,6 +54,9 @@ pub mod verified_addresses {
     
     // Meteora swap program
     pub static METEORA_SWAP_PROGRAM: Pubkey = solana_program::pubkey!("Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB");
+    
+    // Dynamic Vault Program (from your config)
+    pub static DYNAMIC_VAULT_PROGRAM: Pubkey = solana_program::pubkey!("24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi");
 }
 
 // Admin account addresses
@@ -307,6 +310,21 @@ pub enum ErrorCode {
 
     #[msg("Transaction locked to prevent reentrancy")]
     ReentrancyLock,
+    
+    #[msg("Failed to create WSOL account")]
+    WsolCreationFailed,
+    
+    #[msg("Failed to close WSOL account")]
+    WsolCloseFailed,
+    
+    #[msg("Invalid WSOL mint")]
+    InvalidWsolMint,
+    
+    #[msg("Invalid vault program")]
+    InvalidVaultProgram,
+    
+    #[msg("Invalid protocol fee account")]
+    InvalidProtocolFeeAccount,
 }
 
 // Event structure for slot filling
@@ -414,14 +432,102 @@ fn verify_chainlink_addresses<'info>(
     Ok(())
 }
 
-// Function to process SOL->DONUT swap using Meteora
+// Function to create and fund WSOL account
+fn create_and_fund_wsol_account<'info>(
+    user_wallet: &AccountInfo<'info>,
+    user_wsol_account: &AccountInfo<'info>,
+    token_program: &Program<'info, Token>,
+    system_program: &Program<'info, System>,
+    sol_amount: u64,
+) -> Result<()> {
+    msg!("Creating WSOL account with {} SOL", sol_amount / 1e9 as u64);
+    
+    // Calculate rent for token account
+    let rent = Rent::get()?;
+    let token_account_size = 165; // Token account size
+    let rent_lamports = rent.minimum_balance(token_account_size);
+    
+    // Create WSOL account
+    let ix = solana_program::system_instruction::create_account(
+        &user_wallet.key(),
+        &user_wsol_account.key(),
+        rent_lamports + sol_amount,
+        token_account_size as u64,
+        &token_program.key(),
+    );
+    
+    solana_program::program::invoke(
+        &ix,
+        &[user_wallet.clone(), user_wsol_account.clone()],
+    ).map_err(|_| error!(ErrorCode::WsolCreationFailed))?;
+    
+    // Initialize token account
+    let ix = spl_token::instruction::initialize_account(
+        &token_program.key(),
+        &user_wsol_account.key(),
+        &verified_addresses::WSOL_MINT,
+        &user_wallet.key(),
+    )?;
+    
+    solana_program::program::invoke(
+        &ix,
+        &[
+            user_wsol_account.clone(),
+            token_program.to_account_info(),
+            Rent::to_account_info(&rent),
+        ],
+    ).map_err(|_| error!(ErrorCode::WsolCreationFailed))?;
+    
+    msg!("WSOL account created successfully");
+    Ok(())
+}
+
+// Function to close WSOL account and recover SOL
+fn close_wsol_account<'info>(
+    user_wsol_account: &AccountInfo<'info>,
+    user_wallet: &AccountInfo<'info>,
+    token_program: &Program<'info, Token>,
+) -> Result<()> {
+    msg!("Closing WSOL account");
+    
+    let ix = spl_token::instruction::close_account(
+        &token_program.key(),
+        &user_wsol_account.key(),
+        &user_wallet.key(),
+        &user_wallet.key(),
+        &[],
+    )?;
+    
+    solana_program::program::invoke(
+        &ix,
+        &[
+            user_wsol_account.clone(),
+            user_wallet.clone(),
+            token_program.to_account_info(),
+        ],
+    ).map_err(|_| error!(ErrorCode::WsolCloseFailed))?;
+    
+    msg!("WSOL account closed");
+    Ok(())
+}
+
+// Updated function to process SOL->DONUT swap using Meteora with WSOL
 fn process_sol_to_donut_swap<'info>(
     user_wallet: &AccountInfo<'info>,
+    user_wsol_account: &AccountInfo<'info>,
     user_donut_account: &AccountInfo<'info>,
     pool: &AccountInfo<'info>,
-    token_a_vault: &AccountInfo<'info>,
-    token_b_vault: &AccountInfo<'info>,
+    vault_a: &AccountInfo<'info>,
+    vault_b: &AccountInfo<'info>,
+    a_vault_lp: &AccountInfo<'info>,
+    b_vault_lp: &AccountInfo<'info>,
+    a_vault_lp_mint: &AccountInfo<'info>,
+    b_vault_lp_mint: &AccountInfo<'info>,
+    a_token_vault: &AccountInfo<'info>,
+    b_token_vault: &AccountInfo<'info>,
+    protocol_fee_account: &AccountInfo<'info>,
     swap_program: &AccountInfo<'info>,
+    vault_program: &AccountInfo<'info>,
     token_program: &Program<'info, Token>,
     system_program: &Program<'info, System>,
     sol_amount: u64,
@@ -432,46 +538,82 @@ fn process_sol_to_donut_swap<'info>(
     // Verify pool
     verify_address_strict(&pool.key(), &verified_addresses::POOL_ADDRESS, ErrorCode::InvalidPoolAddress)?;
     
-    let swap_accounts = [
-        pool.clone(),
-        user_wallet.clone(),
-        token_a_vault.clone(), // DONUT vault
-        token_b_vault.clone(), // SOL vault
-        user_donut_account.clone(),
-        user_wallet.clone(), // SOL source
-        token_program.to_account_info(),
-        system_program.to_account_info(),
-    ];
-
-    // Meteora swap instruction data
-    // This is a placeholder - you need to get the actual instruction discriminator from Meteora
+    // Verify vault program
+    verify_address_strict(&vault_program.key(), &verified_addresses::DYNAMIC_VAULT_PROGRAM, ErrorCode::InvalidVaultProgram)?;
+    
+    // Create and fund WSOL account
+    create_and_fund_wsol_account(
+        user_wallet,
+        user_wsol_account,
+        token_program,
+        system_program,
+        sol_amount
+    )?;
+    
+    // Now execute the swap
+    msg!("Executing swap: WSOL -> DONUT");
+    
+    // Prepare swap instruction
     let mut swap_data = Vec::with_capacity(24);
-    swap_data.extend_from_slice(&[248, 198, 158, 145, 225, 117, 135, 200]); // Swap discriminator (placeholder)
+    // Meteora swap discriminator - you need to verify this!
+    swap_data.extend_from_slice(&[248, 198, 158, 145, 225, 117, 135, 200]); 
     swap_data.extend_from_slice(&sol_amount.to_le_bytes()); // Amount in
-    swap_data.extend_from_slice(&0u64.to_le_bytes()); // Minimum amount out
-
+    swap_data.extend_from_slice(&1u64.to_le_bytes()); // Minimum amount out (1 for now, adjust as needed)
+    
+    // Build account metas in correct order for Meteora
+    let accounts = vec![
+        solana_program::instruction::AccountMeta::new(pool.key(), false),
+        solana_program::instruction::AccountMeta::new(user_wsol_account.key(), false), // user_source_token
+        solana_program::instruction::AccountMeta::new(user_donut_account.key(), false), // user_destination_token
+        solana_program::instruction::AccountMeta::new(vault_a.key(), false), // a_vault
+        solana_program::instruction::AccountMeta::new(vault_b.key(), false), // b_vault
+        solana_program::instruction::AccountMeta::new(a_token_vault.key(), false), // a_token_vault
+        solana_program::instruction::AccountMeta::new(b_token_vault.key(), false), // b_token_vault
+        solana_program::instruction::AccountMeta::new(a_vault_lp_mint.key(), false), // a_vault_lp_mint
+        solana_program::instruction::AccountMeta::new(b_vault_lp_mint.key(), false), // b_vault_lp_mint
+        solana_program::instruction::AccountMeta::new(a_vault_lp.key(), false), // a_vault_lp
+        solana_program::instruction::AccountMeta::new(b_vault_lp.key(), false), // b_vault_lp
+        solana_program::instruction::AccountMeta::new(protocol_fee_account.key(), false), // protocol_token_fee
+        solana_program::instruction::AccountMeta::new_readonly(user_wallet.key(), true), // user (signer)
+        solana_program::instruction::AccountMeta::new_readonly(vault_program.key(), false), // vault_program
+        solana_program::instruction::AccountMeta::new_readonly(token_program.key(), false), // token_program
+    ];
+    
+    let swap_ix = solana_program::instruction::Instruction {
+        program_id: swap_program.key(),
+        accounts,
+        data: swap_data,
+    };
+    
+    // Execute swap
     solana_program::program::invoke(
-        &solana_program::instruction::Instruction {
-            program_id: swap_program.key(),
-            accounts: swap_accounts.iter().enumerate().map(|(i, a)| {
-                match i {
-                    0 => solana_program::instruction::AccountMeta::new(a.key(), false), // pool
-                    1 => solana_program::instruction::AccountMeta::new_readonly(a.key(), true), // user (signer)
-                    2 | 3 => solana_program::instruction::AccountMeta::new(a.key(), false), // vaults
-                    4 => solana_program::instruction::AccountMeta::new(a.key(), false), // user donut account
-                    5 => solana_program::instruction::AccountMeta::new(a.key(), true), // user wallet (SOL source)
-                    _ => solana_program::instruction::AccountMeta::new_readonly(a.key(), false), // programs
-                }
-            }).collect::<Vec<solana_program::instruction::AccountMeta>>(),
-            data: swap_data,
-        },
-        &swap_accounts,
+        &swap_ix,
+        &[
+            pool.clone(),
+            user_wsol_account.clone(),
+            user_donut_account.clone(),
+            vault_a.clone(),
+            vault_b.clone(),
+            a_token_vault.clone(),
+            b_token_vault.clone(),
+            a_vault_lp_mint.clone(),
+            b_vault_lp_mint.clone(),
+            a_vault_lp.clone(),
+            b_vault_lp.clone(),
+            protocol_fee_account.clone(),
+            user_wallet.clone(),
+            vault_program.clone(),
+            token_program.to_account_info(),
+        ],
     ).map_err(|e| {
-        msg!("SOL to DONUT swap failed: {:?}", e);
+        msg!("Swap failed: {:?}", e);
         error!(ErrorCode::SwapFailed)
     })?;
     
-    msg!("SOL to DONUT swap completed: {} SOL", sol_amount);
+    // Close WSOL account to recover any remaining SOL
+    close_wsol_account(user_wsol_account, user_wallet, token_program)?;
+    
+    msg!("Swap completed successfully");
     Ok(())
 }
 
@@ -648,7 +790,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// Accounts for registration without referrer - SIMPLIFIED
+// Updated accounts for registration without referrer with WSOL support
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithoutReferrerSwap<'info> {
@@ -670,6 +812,11 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     )]
     pub user: Account<'info, UserAccount>,
 
+    // User WSOL token account (temporary)
+    /// CHECK: WSOL account will be created in the instruction
+    #[account(mut)]
+    pub user_wsol_account: AccountInfo<'info>,
+
     // User DONUT token account
     #[account(
         init,
@@ -679,25 +826,59 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     )]
     pub user_donut_account: Account<'info, TokenAccount>,
     
-    // Token mint
+    // Token mints
     /// CHECK: This is the DONUT token mint address
     pub token_mint: AccountInfo<'info>,
+    
+    /// CHECK: This is the WSOL token mint address
+    pub wsol_mint: AccountInfo<'info>,
 
-    // Swap Accounts
+    // Pool accounts
     /// CHECK: Pool account for swaps
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A (main vault account)
+    #[account(mut)]
+    pub vault_a: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B (main vault account)
+    #[account(mut)]
+    pub vault_b: UncheckedAccount<'info>,
 
     /// CHECK: Token A vault (DONUT)
     #[account(mut)]
-    pub token_a_vault: UncheckedAccount<'info>,
+    pub a_token_vault: UncheckedAccount<'info>,
 
-    /// CHECK: Token B vault (SOL)
+    /// CHECK: Token B vault (WSOL)
     #[account(mut)]
-    pub token_b_vault: UncheckedAccount<'info>,
+    pub b_token_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP token account
+    #[account(mut)]
+    pub a_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP token account
+    #[account(mut)]
+    pub b_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP mint
+    #[account(mut)]
+    pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP mint
+    #[account(mut)]
+    pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Protocol fee account
+    #[account(mut)]
+    pub protocol_fee_account: UncheckedAccount<'info>,
 
     /// CHECK: Meteora swap program
     pub swap_program: UncheckedAccount<'info>,
+    
+    /// CHECK: Dynamic vault program
+    pub vault_program: UncheckedAccount<'info>,
 
     // Required programs
     pub token_program: Program<'info, Token>,
@@ -706,7 +887,7 @@ pub struct RegisterWithoutReferrerSwap<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// Structure for registration with SOL - SIMPLIFIED
+// Updated structure for registration with SOL and WSOL support
 #[derive(Accounts)]
 #[instruction(deposit_amount: u64)]
 pub struct RegisterWithSolSwap<'info> {
@@ -733,6 +914,11 @@ pub struct RegisterWithSolSwap<'info> {
     )]
     pub user: Account<'info, UserAccount>,
 
+    // User WSOL token account (temporary)
+    /// CHECK: WSOL account will be created in the instruction
+    #[account(mut)]
+    pub user_wsol_account: AccountInfo<'info>,
+
     // User DONUT token account
     #[account(
         init,
@@ -742,25 +928,59 @@ pub struct RegisterWithSolSwap<'info> {
     )]
     pub user_donut_account: Account<'info, TokenAccount>,
     
-    // Token mint
+    // Token mints
     /// CHECK: This is the DONUT token mint address
     pub token_mint: AccountInfo<'info>,
+    
+    /// CHECK: This is the WSOL token mint address
+    pub wsol_mint: AccountInfo<'info>,
 
-    // Swap Accounts
+    // Pool accounts
     /// CHECK: Pool account for swaps
     #[account(mut)]
     pub pool: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A (main vault account)
+    #[account(mut)]
+    pub vault_a: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B (main vault account)
+    #[account(mut)]
+    pub vault_b: UncheckedAccount<'info>,
 
     /// CHECK: Token A vault (DONUT)
     #[account(mut)]
-    pub token_a_vault: UncheckedAccount<'info>,
+    pub a_token_vault: UncheckedAccount<'info>,
 
-    /// CHECK: Token B vault (SOL)
+    /// CHECK: Token B vault (WSOL)
     #[account(mut)]
-    pub token_b_vault: UncheckedAccount<'info>,
+    pub b_token_vault: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP token account
+    #[account(mut)]
+    pub a_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP token account
+    #[account(mut)]
+    pub b_vault_lp: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault A LP mint
+    #[account(mut)]
+    pub a_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Vault B LP mint
+    #[account(mut)]
+    pub b_vault_lp_mint: UncheckedAccount<'info>,
+    
+    /// CHECK: Protocol fee account
+    #[account(mut)]
+    pub protocol_fee_account: UncheckedAccount<'info>,
 
     /// CHECK: Meteora swap program
     pub swap_program: UncheckedAccount<'info>,
+    
+    /// CHECK: Dynamic vault program
+    pub vault_program: UncheckedAccount<'info>,
 
     // SOL reserve vault
     #[account(
@@ -798,7 +1018,7 @@ pub mod referral_system {
         Ok(())
     }
     
-    // Register without referrer - SIMPLIFIED
+    // Register without referrer - Updated with WSOL support
     pub fn register_without_referrer(ctx: Context<RegisterWithoutReferrerSwap>, deposit_amount: u64) -> Result<()> {
         // PROTEÇÃO REENTRANCY
         if ctx.accounts.state.is_locked {
@@ -826,6 +1046,15 @@ pub mod referral_system {
             &ctx.accounts.token_mint.key(), 
             &verified_addresses::TOKEN_MINT, 
             ErrorCode::InvalidTokenMintAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
+        
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.wsol_mint.key(), 
+            &verified_addresses::WSOL_MINT, 
+            ErrorCode::InvalidWsolMint
         ) {
             ctx.accounts.state.is_locked = false;
             return Err(e);
@@ -860,14 +1089,23 @@ pub mod referral_system {
         // Initialize financial data
         user.reserved_sol = 0;
 
-        // Process SOL to DONUT swap
+        // Process SOL to DONUT swap with WSOL
         if let Err(e) = process_sol_to_donut_swap(
             &ctx.accounts.user_wallet.to_account_info(),
+            &ctx.accounts.user_wsol_account,
             &ctx.accounts.user_donut_account.to_account_info(),
             &ctx.accounts.pool.to_account_info(),
-            &ctx.accounts.token_a_vault.to_account_info(),
-            &ctx.accounts.token_b_vault.to_account_info(),
+            &ctx.accounts.vault_a.to_account_info(),
+            &ctx.accounts.vault_b.to_account_info(),
+            &ctx.accounts.a_vault_lp.to_account_info(),
+            &ctx.accounts.b_vault_lp.to_account_info(),
+            &ctx.accounts.a_vault_lp_mint.to_account_info(),
+            &ctx.accounts.b_vault_lp_mint.to_account_info(),
+            &ctx.accounts.a_token_vault.to_account_info(),
+            &ctx.accounts.b_token_vault.to_account_info(),
+            &ctx.accounts.protocol_fee_account.to_account_info(),
             &ctx.accounts.swap_program.to_account_info(),
+            &ctx.accounts.vault_program.to_account_info(),
             &ctx.accounts.token_program,
             &ctx.accounts.system_program,
             deposit_amount
@@ -881,7 +1119,7 @@ pub mod referral_system {
         Ok(())
     }
 
-    // Register with SOL - SIMPLIFIED AND CORRECTED
+    // Register with SOL - Updated with WSOL support
     pub fn register_with_sol_swap<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolSwap<'info>>, 
         deposit_amount: u64
@@ -961,6 +1199,15 @@ pub mod referral_system {
             &ctx.accounts.token_mint.key(), 
             &verified_addresses::TOKEN_MINT, 
             ErrorCode::InvalidTokenMintAddress
+        ) {
+            ctx.accounts.state.is_locked = false;
+            return Err(e);
+        }
+        
+        if let Err(e) = verify_address_strict(
+            &ctx.accounts.wsol_mint.key(), 
+            &verified_addresses::WSOL_MINT, 
+            ErrorCode::InvalidWsolMint
         ) {
             ctx.accounts.state.is_locked = false;
             return Err(e);
@@ -1051,14 +1298,23 @@ pub mod referral_system {
         let mut swap_processed = false;
 
         if slot_idx == 0 {
-            // SLOT 1: Swap SOL to DONUT
+            // SLOT 1: Swap SOL to DONUT with WSOL
             if let Err(e) = process_sol_to_donut_swap(
                 &ctx.accounts.user_wallet.to_account_info(),
+                &ctx.accounts.user_wsol_account,
                 &ctx.accounts.user_donut_account.to_account_info(),
                 &ctx.accounts.pool.to_account_info(),
-                &ctx.accounts.token_a_vault.to_account_info(),
-                &ctx.accounts.token_b_vault.to_account_info(),
+                &ctx.accounts.vault_a.to_account_info(),
+                &ctx.accounts.vault_b.to_account_info(),
+                &ctx.accounts.a_vault_lp.to_account_info(),
+                &ctx.accounts.b_vault_lp.to_account_info(),
+                &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                &ctx.accounts.a_token_vault.to_account_info(),
+                &ctx.accounts.b_token_vault.to_account_info(),
+                &ctx.accounts.protocol_fee_account.to_account_info(),
                 &ctx.accounts.swap_program.to_account_info(),
+                &ctx.accounts.vault_program.to_account_info(),
                 &ctx.accounts.token_program,
                 &ctx.accounts.system_program,
                 deposit_amount
@@ -1138,11 +1394,20 @@ pub mod referral_system {
                 
                 if let Err(e) = process_sol_to_donut_swap(
                     &ctx.accounts.user_wallet.to_account_info(),
+                    &ctx.accounts.user_wsol_account,
                     &ctx.accounts.user_donut_account.to_account_info(),
                     &ctx.accounts.pool.to_account_info(),
-                    &ctx.accounts.token_a_vault.to_account_info(),
-                    &ctx.accounts.token_b_vault.to_account_info(),
+                    &ctx.accounts.vault_a.to_account_info(),
+                    &ctx.accounts.vault_b.to_account_info(),
+                    &ctx.accounts.a_vault_lp.to_account_info(),
+                    &ctx.accounts.b_vault_lp.to_account_info(),
+                    &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                    &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                    &ctx.accounts.a_token_vault.to_account_info(),
+                    &ctx.accounts.b_token_vault.to_account_info(),
+                    &ctx.accounts.protocol_fee_account.to_account_info(),
                     &ctx.accounts.swap_program.to_account_info(),
+                    &ctx.accounts.vault_program.to_account_info(),
                     &ctx.accounts.token_program,
                     &ctx.accounts.system_program,
                     current_deposit
@@ -1236,11 +1501,20 @@ pub mod referral_system {
                         
                         if let Err(e) = process_sol_to_donut_swap(
                             &ctx.accounts.user_wallet.to_account_info(),
+                            &ctx.accounts.user_wsol_account,
                             &ctx.accounts.user_donut_account.to_account_info(),
                             &ctx.accounts.pool.to_account_info(),
-                            &ctx.accounts.token_a_vault.to_account_info(),
-                            &ctx.accounts.token_b_vault.to_account_info(),
+                            &ctx.accounts.vault_a.to_account_info(),
+                            &ctx.accounts.vault_b.to_account_info(),
+                            &ctx.accounts.a_vault_lp.to_account_info(),
+                            &ctx.accounts.b_vault_lp.to_account_info(),
+                            &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                            &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                            &ctx.accounts.a_token_vault.to_account_info(),
+                            &ctx.accounts.b_token_vault.to_account_info(),
+                            &ctx.accounts.protocol_fee_account.to_account_info(),
                             &ctx.accounts.swap_program.to_account_info(),
+                            &ctx.accounts.vault_program.to_account_info(),
                             &ctx.accounts.token_program,
                             &ctx.accounts.system_program,
                             current_deposit
@@ -1353,11 +1627,20 @@ pub mod referral_system {
                     
                     if let Err(e) = process_sol_to_donut_swap(
                         &ctx.accounts.user_wallet.to_account_info(),
+                        &ctx.accounts.user_wsol_account,
                         &ctx.accounts.user_donut_account.to_account_info(),
                         &ctx.accounts.pool.to_account_info(),
-                        &ctx.accounts.token_a_vault.to_account_info(),
-                        &ctx.accounts.token_b_vault.to_account_info(),
+                        &ctx.accounts.vault_a.to_account_info(),
+                        &ctx.accounts.vault_b.to_account_info(),
+                        &ctx.accounts.a_vault_lp.to_account_info(),
+                        &ctx.accounts.b_vault_lp.to_account_info(),
+                        &ctx.accounts.a_vault_lp_mint.to_account_info(),
+                        &ctx.accounts.b_vault_lp_mint.to_account_info(),
+                        &ctx.accounts.a_token_vault.to_account_info(),
+                        &ctx.accounts.b_token_vault.to_account_info(),
+                        &ctx.accounts.protocol_fee_account.to_account_info(),
                         &ctx.accounts.swap_program.to_account_info(),
+                        &ctx.accounts.vault_program.to_account_info(),
                         &ctx.accounts.token_program,
                         &ctx.accounts.system_program,
                         current_deposit

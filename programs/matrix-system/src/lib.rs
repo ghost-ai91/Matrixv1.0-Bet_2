@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{self, clock::Clock};
+use anchor_lang::solana_program::{self, clock::Clock, sysvar};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
 use anchor_spl::token::{self, Token, TokenAccount, Mint};
@@ -442,27 +442,30 @@ fn create_and_fund_wsol_account<'info>(
 ) -> Result<()> {
     msg!("Creating WSOL account with {} SOL", sol_amount / 1e9 as u64);
     
-    // Calculate rent for token account
+    // First create a temporary account for WSOL with System Program
     let rent = Rent::get()?;
-    let token_account_size = 165; // Token account size
-    let rent_lamports = rent.minimum_balance(token_account_size);
+    let space = 165u64; // Token account size
+    let lamports = rent.minimum_balance(space as usize) + sol_amount;
     
-    // Create WSOL account
-    let ix = solana_program::system_instruction::create_account(
+    // Create account
+    let create_ix = solana_program::system_instruction::create_account(
         &user_wallet.key(),
         &user_wsol_account.key(),
-        rent_lamports + sol_amount,
-        token_account_size as u64,
+        lamports,
+        space,
         &token_program.key(),
     );
     
     solana_program::program::invoke(
-        &ix,
-        &[user_wallet.clone(), user_wsol_account.clone()],
+        &create_ix,
+        &[
+            user_wallet.clone(),
+            user_wsol_account.clone(),
+        ],
     ).map_err(|_| error!(ErrorCode::WsolCreationFailed))?;
     
-    // Initialize token account
-    let ix = spl_token::instruction::initialize_account(
+    // Initialize the account using initialize_account3 which doesn't need rent
+    let init_ix = spl_token::instruction::initialize_account3(
         &token_program.key(),
         &user_wsol_account.key(),
         &verified_addresses::WSOL_MINT,
@@ -470,15 +473,14 @@ fn create_and_fund_wsol_account<'info>(
     )?;
     
     solana_program::program::invoke(
-        &ix,
+        &init_ix,
         &[
             user_wsol_account.clone(),
             token_program.to_account_info(),
-            Rent::to_account_info(&rent),
         ],
     ).map_err(|_| error!(ErrorCode::WsolCreationFailed))?;
     
-    msg!("WSOL account created successfully");
+    msg!("WSOL account created and initialized successfully");
     Ok(())
 }
 
@@ -1499,7 +1501,7 @@ pub mod referral_system {
                         // FOUND SLOT 1: Swap SOL to DONUT
                         msg!("Recursion: Found SLOT 1 - swapping to DONUT");
                         
-                        if let Err(e) = process_sol_to_donut_swap(
+if let Err(e) = process_sol_to_donut_swap(
                             &ctx.accounts.user_wallet.to_account_info(),
                             &ctx.accounts.user_wsol_account,
                             &ctx.accounts.user_donut_account.to_account_info(),

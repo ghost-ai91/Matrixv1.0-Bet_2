@@ -1,4 +1,5 @@
-mod getrandom_fix;
+#[cfg(target_arch = "bpf")]
+mod getrandom_custom;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
@@ -10,7 +11,7 @@ use chainlink_solana as chainlink;
 use {solana_security_txt::security_txt};
 
 
-declare_id!("6MYcEBgoJzaNi6frTyVqUEwNZ3h9UmZbScdUKiPMzmKq");
+declare_id!("7Ck62qPCsLc6cXykGdYtNirHHH2FJNNi6jDrT7NNndSg");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {

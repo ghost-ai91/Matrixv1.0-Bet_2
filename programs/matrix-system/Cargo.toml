@@ -3,6 +3,7 @@ name = "matrix-system"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -21,4 +22,13 @@ anchor-spl = "0.31.0"
 chainlink_solana = "1.0.0"
 solana-security-txt = "1.1.1"
 default-env = "0.1.1"
-getrandom = "0.3"
+
+[patch.crates-io]
+# Forçar chainlink a usar versões compatíveis
+solana-program = { version = "2.1.0" }
+borsh = { version = "1.5.1" }
+borsh-derive = { version = "1.5.1" }
+
+# Resolver problema do getrandom
+getrandom = { version = "0.2.15", features = ["custom"] }
+ahash = { version = "0.8.11", default-features = false }

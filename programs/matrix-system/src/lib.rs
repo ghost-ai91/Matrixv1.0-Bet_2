@@ -2,13 +2,13 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-declare_id!("HU3b4N82bFXn6cRNuSAeFjyXZMFUmf2xPJeun4k8iQy6");
+declare_id!("DeppEXXy7Bk91AW9hKppfZHK4qvPKLK83nGbh8pE3Goy");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {
@@ -382,33 +382,7 @@ fn verify_pool_and_vault_a_addresses<'info>(
     Ok(())
 }
 
-// Function to strictly verify an ATA account
-fn verify_ata_strict<'info>(
-    token_account: &AccountInfo<'info>,
-    owner: &Pubkey,
-    expected_mint: &Pubkey
-) -> Result<()> {
-    if token_account.owner != &spl_token::id() {
-        return Err(error!(ErrorCode::InvalidTokenAccount));
-    }
-    
-    match TokenAccount::try_deserialize(&mut &token_account.data.borrow()[..]) {
-        Ok(token_data) => {
-            if token_data.owner != *owner {
-                return Err(error!(ErrorCode::InvalidWalletForATA));
-            }
-            
-            if token_data.mint != *expected_mint {
-                return Err(error!(ErrorCode::InvalidTokenMintAddress));
-            }
-        },
-        Err(_) => {
-            return Err(error!(ErrorCode::InvalidTokenAccount));
-        }
-    }
-    
-    Ok(())
-}
+
 
 // Function to verify all fixed addresses at once
 fn verify_all_fixed_addresses<'info>(
@@ -978,7 +952,30 @@ fn process_pay_referrer<'info>(
     Ok(())
 }
 
-/// Process the direct referrer's matrix when a new user registers
+/// Helper function to calculate swap amount with error handling
+fn calc_swap_amount<'info>(
+    pool: &AccountInfo<'info>,
+    a_vault: &AccountInfo<'info>,
+    b_vault: &AccountInfo<'info>,
+    a_vault_lp: &AccountInfo<'info>,
+    b_vault_lp: &AccountInfo<'info>,
+    a_vault_lp_mint: &AccountInfo<'info>,
+    b_vault_lp_mint: &AccountInfo<'info>,
+    amount: u64,
+) -> Result<u64> {
+    calculate_swap_amount_out(
+        pool,
+        a_vault,
+        b_vault,
+        a_vault_lp,
+        b_vault_lp,
+        a_vault_lp_mint,
+        b_vault_lp_mint,
+        amount,
+    )
+}
+
+// Process the direct referrer's matrix when a new user registers
 fn process_referrer_chain<'info>(
    user_key: &Pubkey,
    referrer: &mut Account<'_, UserAccount>,
@@ -1367,7 +1364,7 @@ pub mod referral_system {
         }
         
         // Calculate minimum DONUT expected
-        let minimum_donut_out = match calculate_swap_amount_out(
+        let minimum_donut_out = match calc_swap_amount(
             &ctx.accounts.pool.to_account_info(),
             a_vault,
             &ctx.accounts.b_vault.to_account_info(),
@@ -1415,8 +1412,8 @@ pub mod referral_system {
         Ok(())
     }
 
-// Register with SOL deposit with swap and burn
-pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
+  // Register with SOL deposit with swap and burn
+  pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, RegisterWithSolDeposit<'info>>, 
     deposit_amount: u64
 ) -> Result<()> {
@@ -1668,7 +1665,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         // SLOT 1: Swap and burn (WSOL já preparado)
         
         // Calculate minimum DONUT expected
-        let minimum_donut_out = match calculate_swap_amount_out(
+        let minimum_donut_out = match calc_swap_amount(
             pool,
             a_vault,
             &ctx.accounts.b_vault.to_account_info(),
@@ -1825,7 +1822,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
             }
             
             // Calculate minimum DONUT expected
-            let minimum_donut_out = match calculate_swap_amount_out(
+            let minimum_donut_out = match calc_swap_amount(
                 pool,
                 a_vault,
                 &ctx.accounts.b_vault.to_account_info(),
@@ -1973,7 +1970,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                         }
                         
                         // Calculate minimum DONUT expected
-                        let minimum_donut_out = match calculate_swap_amount_out(
+                        let minimum_donut_out = match calc_swap_amount(
                             pool,
                             a_vault,
                             &ctx.accounts.b_vault.to_account_info(),
@@ -2135,7 +2132,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
                 }
                 
                 // Calculate minimum DONUT expected
-                let minimum_donut_out = match calculate_swap_amount_out(
+                let minimum_donut_out = match calc_swap_amount(
                     pool,
                     a_vault,
                     &ctx.accounts.b_vault.to_account_info(),
@@ -2196,7 +2193,7 @@ pub fn register_with_sol_deposit<'a, 'b, 'c, 'info>(
         msg!("EMERGENCY: Found remaining WSOL balance: {}, forcing swap and burn", final_wsol_balance);
         
         // Calculate minimum DONUT expected
-        let minimum_donut_out = match calculate_swap_amount_out(
+        let minimum_donut_out = match calc_swap_amount(
             pool,
             a_vault,
             &ctx.accounts.b_vault.to_account_info(),

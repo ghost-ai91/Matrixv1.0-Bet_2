@@ -26,3 +26,8 @@ default-env = "0.1.1"
 # Resolver problema do getrandom
 getrandom = { version = "0.2.15", features = ["custom"] }
 ahash = { version = "0.8.11", default-features = false }
+
+[patch.crates-io]
+proc-macro2 = { version = "1.0.79" }
+quote = { version = "1.0.35" }
+syn = { version = "2.0.52" }

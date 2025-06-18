@@ -1,15 +1,12 @@
-#[cfg(target_arch = "bpf")]
-mod getrandom_custom;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
 use anchor_spl::token::{self, Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
-// use chainlink_solana as chainlink;
+use anchor_spl::token::spl_token;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
-
 
 declare_id!("7Ck62qPCsLc6cXykGdYtNirHHH2FJNNi6jDrT7NNndSg");
 
@@ -45,7 +42,8 @@ const VAULT_A_ACCOUNTS_COUNT: usize = 4; // a_vault + a_vault_lp + a_vault_lp_mi
 
 // Constants for strict address verification
 pub mod verified_addresses {
-    use solana_program::pubkey::Pubkey;
+    use anchor_lang::prelude::Pubkey;
+    use anchor_lang::solana_program;
  
     // Pool address
     pub static POOL_ADDRESS: Pubkey = solana_program::pubkey!("FrQ5KsAgjCe3FFg6ZENri8feDft54tgnATxyffcasuxU");
@@ -81,7 +79,8 @@ pub mod verified_addresses {
 
 // Admin account addresses
 pub mod admin_addresses {
-    use solana_program::pubkey::Pubkey;
+    use anchor_lang::prelude::Pubkey;
+    use anchor_lang::solana_program;
 
     pub static MULTISIG_TREASURY: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
     pub static AUTHORIZED_INITIALIZER: Pubkey = solana_program::pubkey!("QgNN4aW9hPz4ANP1LqzR2FkDPZo9MzDZxDQ4abovHYv");
@@ -319,8 +318,8 @@ fn force_memory_cleanup() {
 
 // Function to get SOL/USD price from Chainlink feed
 fn get_sol_usd_price<'info>(
-    chainlink_feed: &AccountInfo<'info>,
-    chainlink_program: &AccountInfo<'info>,
+    _chainlink_feed: &AccountInfo<'info>,
+    _chainlink_program: &AccountInfo<'info>,
 ) -> Result<(i128, u32, i64, i64)> {
     // TEMPORÁRIO: Retornar valores fixos
     let price = 100_00000000; // $100 USD
@@ -329,24 +328,8 @@ fn get_sol_usd_price<'info>(
     let current_timestamp = clock.unix_timestamp;
     
     Ok((price, decimals, current_timestamp, current_timestamp))
-    
-    /* CÓDIGO ORIGINAL COMENTADO
-    let round = chainlink::latest_round_data(
-        chainlink_program.clone(),
-        chainlink_feed.clone(),
-    ).map_err(|_| error!(ErrorCode::PriceFeedReadFailed))?;
-
-    let decimals = chainlink::decimals(
-        chainlink_program.clone(),
-        chainlink_feed.clone(),
-    ).map_err(|_| error!(ErrorCode::PriceFeedReadFailed))?;
-
-    let clock = Clock::get()?;
-    let current_timestamp = clock.unix_timestamp;
-    
-    Ok((round.answer, decimals.into(), current_timestamp, round.timestamp.into()))
-    */
 }
+
 // Function to calculate minimum SOL deposit based on USD price
 fn calculate_minimum_sol_deposit<'info>(
     chainlink_feed: &AccountInfo<'info>, 
@@ -445,18 +428,11 @@ fn verify_all_fixed_addresses<'info>(
 
 // Function to verify Chainlink addresses
 fn verify_chainlink_addresses<'info>(
-    chainlink_program: &Pubkey,
-    chainlink_feed: &Pubkey,
+    _chainlink_program: &Pubkey,
+    _chainlink_feed: &Pubkey,
 ) -> Result<()> {
     // TEMPORÁRIO: Sempre retornar Ok
     Ok(())
-    
-    /* CÓDIGO ORIGINAL COMENTADO
-    verify_address_strict(chainlink_program, &verified_addresses::CHAINLINK_PROGRAM, ErrorCode::InvalidChainlinkProgram)?;
-    verify_address_strict(chainlink_feed, &verified_addresses::SOL_USD_FEED, ErrorCode::InvalidPriceFeed)?;
-    
-    Ok(())
-    */
 }
 
 fn validate_all_remaining_accounts<'info>(

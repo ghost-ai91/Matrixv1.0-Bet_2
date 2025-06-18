@@ -1,13 +1,37 @@
-// Custom getrandom implementation for Solana v0.3
-#[cfg(target_os = "solana")]
-use getrandom::Error;
+// Custom getrandom APENAS para compilação BPF/SBF
+#[cfg(all(
+    target_arch = "bpf",
+    not(feature = "no-entrypoint")
+))]
+getrandom::register_custom_getrandom!(custom_getrandom);
 
-// Esta é a função correta para v0.3 com backend custom
-#[cfg(target_os = "solana")]
+#[cfg(all(
+    target_arch = "bpf",
+    not(feature = "no-entrypoint")
+))]
+fn custom_getrandom(_buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    Err(getrandom::Error::UNSUPPORTED)
+}
+
+// Para getrandom 0.1.x
+#[cfg(all(
+    target_arch = "bpf",
+    not(feature = "no-entrypoint")
+))]
 #[no_mangle]
-unsafe extern "Rust" fn __getrandom_v03_custom(
-    dest: *mut u8,
-    len: usize,
-) -> Result<(), Error> {
-    Err(Error::UNSUPPORTED)
+pub unsafe extern "C" fn __getrandom_custom(_dest: *mut u8, _len: usize) -> u32 {
+    1
+}
+
+// Para getrandom 0.2.x  
+#[cfg(all(
+    target_arch = "bpf",
+    not(feature = "no-entrypoint")
+))]
+#[no_mangle]
+pub unsafe extern "C" fn __getrandom_v02_custom(
+    _dest: *mut u8,
+    _len: usize,
+) -> Result<(), getrandom::Error> {
+    Err(getrandom::Error::UNSUPPORTED)
 }

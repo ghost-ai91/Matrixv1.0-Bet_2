@@ -10,7 +10,7 @@ use chainlink_solana as chainlink;
 use {solana_security_txt::security_txt};
 
 
-declare_id!("7VXvMTWvvmuSCFeZ2rpTKEhsjNiskDvERf1kWv4Pi1Bg");
+declare_id!("6MYcEBgoJzaNi6frTyVqUEwNZ3h9UmZbScdUKiPMzmKq");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {

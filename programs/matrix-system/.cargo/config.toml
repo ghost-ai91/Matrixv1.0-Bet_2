@@ -1,5 +1,10 @@
+# Apenas para as targets Solana BPF/SBF
 [target.bpfel-unknown-unknown]
 rustflags = ["--cfg", "getrandom_backend=\"custom\""]
 
 [target.sbf-solana-solana]
 rustflags = ["--cfg", "getrandom_backend=\"custom\""]
+
+# NÃO aplicar para Mac/desenvolvimento local
+[target.aarch64-apple-darwin]
+# Deixar vazio - usar comportamento padrão

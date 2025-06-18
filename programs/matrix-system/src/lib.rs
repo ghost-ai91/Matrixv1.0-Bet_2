@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
 use anchor_lang::AnchorSerialize;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::spl_token;
 #[cfg(not(feature = "no-entrypoint"))]
@@ -373,34 +373,6 @@ fn verify_pool_and_vault_a_addresses<'info>(
     verify_address_strict(a_vault, &verified_addresses::A_VAULT, ErrorCode::InvalidVaultAddress)?;
     verify_address_strict(a_vault_lp, &verified_addresses::A_VAULT_LP, ErrorCode::InvalidVaultALpAddress)?;
     verify_address_strict(a_vault_lp_mint, &verified_addresses::A_VAULT_LP_MINT, ErrorCode::InvalidVaultALpMintAddress)?;
-    
-    Ok(())
-}
-
-// Function to strictly verify an ATA account
-fn verify_ata_strict<'info>(
-    token_account: &AccountInfo<'info>,
-    owner: &Pubkey,
-    expected_mint: &Pubkey
-) -> Result<()> {
-    if token_account.owner != &spl_token::id() {
-        return Err(error!(ErrorCode::InvalidTokenAccount));
-    }
-    
-    match TokenAccount::try_deserialize(&mut &token_account.data.borrow()[..]) {
-        Ok(token_data) => {
-            if token_data.owner != *owner {
-                return Err(error!(ErrorCode::InvalidWalletForATA));
-            }
-            
-            if token_data.mint != *expected_mint {
-                return Err(error!(ErrorCode::InvalidTokenMintAddress));
-            }
-        },
-        Err(_) => {
-            return Err(error!(ErrorCode::InvalidTokenAccount));
-        }
-    }
     
     Ok(())
 }

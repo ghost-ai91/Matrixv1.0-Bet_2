@@ -21,4 +21,4 @@ anchor-spl = "0.31.0"
 chainlink_solana = "1.0.0"
 solana-security-txt = "1.1.1"
 default-env = "0.1.1"
-getrandom = { version = "0.3", features = ["custom"] }
+getrandom = "0.3"

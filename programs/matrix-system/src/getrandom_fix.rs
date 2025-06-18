@@ -1,16 +1,13 @@
-// Custom getrandom implementation for Solana
+// Custom getrandom implementation for Solana v0.3
 #[cfg(target_os = "solana")]
-getrandom::register_custom_getrandom!(custom_getrandom);
+use getrandom::Error;
 
-#[cfg(target_os = "solana")]
-fn custom_getrandom(_buf: &mut [u8]) -> Result<(), getrandom::Error> {
-    Err(getrandom::Error::UNSUPPORTED)
-}
-
-// Fix for older getrandom versions
+// Esta é a função correta para v0.3 com backend custom
 #[cfg(target_os = "solana")]
 #[no_mangle]
-pub fn __getrandom_custom(_dest: *mut u8, _len: usize) -> u32 {
-    // Return error code for unsupported
-    1
+unsafe extern "Rust" fn __getrandom_v03_custom(
+    dest: *mut u8,
+    len: usize,
+) -> Result<(), Error> {
+    Err(Error::UNSUPPORTED)
 }

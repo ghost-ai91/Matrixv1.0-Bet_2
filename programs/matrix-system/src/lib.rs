@@ -1,3 +1,4 @@
+mod getrandom_fix;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{self, clock::Clock};
 use anchor_lang::AnchorDeserialize;
@@ -8,19 +9,8 @@ use chainlink_solana as chainlink;
 #[cfg(not(feature = "no-entrypoint"))]
 use {solana_security_txt::security_txt};
 
-// Custom getrandom implementation for Solana
-#[cfg(target_os = "solana")]
-#[no_mangle]
-unsafe extern "Rust" fn __getrandom_v03_custom(
-    _dest: *mut u8,
-    _len: usize,
-) -> Result<(), getrandom::Error> {
-    // Solana programs don't have access to randomness
-    // Return unsupported error
-    Err(getrandom::Error::UNSUPPORTED)
-}
 
-declare_id!("HU3b4N82bFXn6cRNuSAeFjyXZMFUmf2xPJeun4k8iQy6");
+declare_id!("Aa7zJMqo8v6dTWBaJNef329PDgHvmXuUSXcnQUYsxEr3");
 
 #[cfg(not(feature = "no-entrypoint"))]
 security_txt! {

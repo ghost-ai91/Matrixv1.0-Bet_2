@@ -14,7 +14,6 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
@@ -22,14 +21,7 @@ anchor-spl = "0.31.0"
 chainlink_solana = "1.0.0"
 solana-security-txt = "1.1.1"
 default-env = "0.1.1"
-bytemuck = { version = "1.13.1", features = ["derive", "min_const_generics"] }
-getrandom = { version = "0.2", features = ["custom"] }
+getrandom = { version = "0.2.15", features = ["custom"] }
 
-[dev-dependencies]
-solana-program-test = "2.1.*"
-solana-sdk = "2.1.*"
-assert_matches = "1.5.0"
-solana-client = "2.1.*"
-solana-account-decoder = "2.1.*"
-bincode = "1.3.3"
-spl-associated-token-account = "6.0.0"
+[patch.crates-io]
+getrandom = { version = "0.2.15", features = ["custom"] }

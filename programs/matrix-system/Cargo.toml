@@ -23,6 +23,7 @@ chainlink_solana = "1.0.0"
 solana-security-txt = "1.1.1"
 default-env = "0.1.1"
 bytemuck = { version = "1.13.1", features = ["derive", "min_const_generics"] }
+getrandom = { version = "0.2", features = ["custom"] }
 
 [dev-dependencies]
 solana-program-test = "2.1.*"
